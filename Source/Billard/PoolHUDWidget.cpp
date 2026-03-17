@@ -1,0 +1,123 @@
+#include "PoolHUDWidget.h"
+
+#include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/ProgressBar.h"
+#include "Components/TextBlock.h"
+
+void UPoolHUDWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	if (!WidgetTree)
+	{
+		return;
+	}
+
+	UCanvasPanel* RootCanvas = Cast<UCanvasPanel>(WidgetTree->RootWidget);
+	if (!RootCanvas)
+	{
+		RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
+		WidgetTree->RootWidget = RootCanvas;
+	}
+
+	if (!ResetButton)
+	{
+		ResetButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ResetButton"));
+		ResetLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ResetLabel"));
+		ResetLabel->SetText(FText::FromString(TEXT("Reset bil [R]")));
+		ResetLabel->SetJustification(ETextJustify::Center);
+		ResetButton->AddChild(ResetLabel);
+		RootCanvas->AddChild(ResetButton);
+
+		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(ResetButton->Slot))
+		{
+			PanelSlot->SetAutoSize(true);
+			PanelSlot->SetAnchors(FAnchors(1.0f, 0.0f));
+			PanelSlot->SetAlignment(FVector2D(1.0f, 0.0f));
+			PanelSlot->SetPosition(FVector2D(-20.0f, 20.0f));
+		}
+	}
+
+	if (!CrosshairText)
+	{
+		CrosshairText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("CrosshairText"));
+		CrosshairText->SetText(FText::FromString(TEXT("+")));
+		RootCanvas->AddChild(CrosshairText);
+		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(CrosshairText->Slot))
+		{
+			PanelSlot->SetAutoSize(true);
+			PanelSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+			PanelSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+			PanelSlot->SetPosition(FVector2D(0.0f, 0.0f));
+		}
+	}
+
+	if (!HintText)
+	{
+		HintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("HintText"));
+		HintText->SetText(FText::FromString(TEXT("Podejdź do białej bili i kliknij LPM, aby wejść w tryb strzału.")));
+		HintText->SetJustification(ETextJustify::Center);
+		RootCanvas->AddChild(HintText);
+		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(HintText->Slot))
+		{
+			PanelSlot->SetAutoSize(true);
+			PanelSlot->SetAnchors(FAnchors(0.5f, 0.0f));
+			PanelSlot->SetAlignment(FVector2D(0.5f, 0.0f));
+			PanelSlot->SetPosition(FVector2D(0.0f, 20.0f));
+		}
+	}
+
+	if (!PowerBar)
+	{
+		PowerBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("PowerBar"));
+		PowerBar->SetPercent(0.0f);
+		RootCanvas->AddChild(PowerBar);
+		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(PowerBar->Slot))
+		{
+			PanelSlot->SetSize(FVector2D(340.0f, 18.0f));
+			PanelSlot->SetAnchors(FAnchors(0.5f, 1.0f));
+			PanelSlot->SetAlignment(FVector2D(0.5f, 1.0f));
+			PanelSlot->SetPosition(FVector2D(0.0f, -28.0f));
+		}
+	}
+
+	if (ResetButton)
+	{
+		ResetButton->OnClicked.RemoveDynamic(this, &UPoolHUDWidget::HandleResetClicked);
+		ResetButton->OnClicked.AddDynamic(this, &UPoolHUDWidget::HandleResetClicked);
+	}
+
+	SetAimMode(false);
+}
+
+void UPoolHUDWidget::SetShotPowerPercent(float InPercent)
+{
+	if (PowerBar)
+	{
+		PowerBar->SetPercent(FMath::Clamp(InPercent, 0.0f, 1.0f));
+	}
+}
+
+void UPoolHUDWidget::SetAimMode(bool bInAimMode)
+{
+	if (PowerBar)
+	{
+		PowerBar->SetVisibility(bInAimMode ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+}
+
+void UPoolHUDWidget::SetHintText(const FString& InText)
+{
+	if (HintText)
+	{
+		HintText->SetText(FText::FromString(InText));
+	}
+}
+
+void UPoolHUDWidget::HandleResetClicked()
+{
+	OnResetClicked.Broadcast();
+}

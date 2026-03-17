@@ -1,0 +1,139 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "PoolTableManager.generated.h"
+
+class APoolBall;
+class APoolPocketTrigger;
+class APoolCushionWall;
+class AStaticMeshActor;
+class UStaticMeshComponent;
+class UStaticMesh;
+
+UCLASS()
+class BILLARD_API APoolTableManager : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	APoolTableManager();
+	virtual void BeginPlay() override;
+
+	APoolBall* GetCueBall() const { return CueBall; }
+	bool AreBallsStopped() const;
+	void ResetRack();
+	void HandleBallPocketed(APoolBall* Ball);
+
+	FVector GetCueBallStartLocation() const { return CueBallStartLocation; }
+	FVector GetRackCenterLocation() const { return RackCenterLocation; }
+	FVector GetTableLongAxis() const { return TableLongAxis; }
+	FVector GetTableShortAxis() const { return TableShortAxis; }
+	FVector GetTableUpAxis() const { return TableUpAxis; }
+	float GetBallRadius() const { return BallRadius; }
+	float GetPocketRadius() const { return PocketRadius; }
+	float GetSurfaceZ() const { return SurfacePoint.Z; }
+	bool IsReady() const { return TableMeshComponent != nullptr; }
+
+protected:
+	void SpawnOrReuseFixedTable();
+	void BuildTableData();
+	void SpawnBalls();
+	void SpawnPockets();
+	void SpawnWalls();
+	void DestroySpawnedActors();
+	FTransform MakeBallTransform(const FVector& WorldLocation) const;
+	void SpawnWallSegment(const FVector& Center, const FVector& Extent, const FRotator& Rotation);
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Setup")
+	FVector FixedTableLocation = FVector(0.0f, 0.0f, 45.0f);
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Setup")
+	FRotator FixedTableRotation = FRotator(0.0f, 0.0f, 0.0f);
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float PlayAreaLengthScale = 0.68f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float PlayAreaWidthScale = 0.56f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float BallRadiusScaleOfWidth = 0.032f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float PocketRadiusMultiplier = 2.1f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float PocketInset = 1.2f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float WallThicknessMultiplier = 0.85f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	AStaticMeshActor* TableActor = nullptr;
+
+	UPROPERTY()
+	AStaticMeshActor* SpawnedVisualTable = nullptr;
+
+	UPROPERTY()
+	UStaticMesh* TableVisualMesh = nullptr;
+
+	UPROPERTY(Transient)
+	UStaticMeshComponent* TableMeshComponent = nullptr;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector TableCenter = FVector::ZeroVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector TableLongAxis = FVector::ForwardVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector TableShortAxis = FVector::RightVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector TableUpAxis = FVector::UpVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector SurfacePoint = FVector::ZeroVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float HalfOuterLength = 100.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float HalfOuterWidth = 50.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float HalfPlayLength = 70.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float HalfPlayWidth = 35.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float BallRadius = 5.7f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	float PocketRadius = 11.5f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector CueBallStartLocation = FVector::ZeroVector;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	FVector RackCenterLocation = FVector::ZeroVector;
+
+	UPROPERTY()
+	TArray<APoolBall*> SpawnedBalls;
+
+	UPROPERTY()
+	TArray<APoolPocketTrigger*> PocketTriggers;
+
+	UPROPERTY()
+	TArray<APoolCushionWall*> CushionWalls;
+
+	UPROPERTY()
+	APoolCushionWall* PlaySurfaceFloor = nullptr;
+
+	UPROPERTY()
+	APoolBall* CueBall = nullptr;
+
+	TArray<FTransform> InitialBallTransforms;
+};
