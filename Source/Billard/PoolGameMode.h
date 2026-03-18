@@ -16,8 +16,14 @@ public:
 	virtual void StartPlay() override;
 
 	APoolTableManager* GetPoolManager() const { return PoolManager; }
+	bool SaveCurrentState();
+	bool LoadSavedState();
+	bool HasSavedGameState() const;
+	void ClearSavedGameState();
 
 protected:
+	void ResolvePoolManager();
+
 	UPROPERTY()
 	APoolTableManager* PoolManager = nullptr;
 };

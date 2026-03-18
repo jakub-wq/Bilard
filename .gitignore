@@ -3,6 +3,7 @@ Binaries/
 DerivedDataCache/
 Intermediate/
 Saved/
+Packaged/
 .vs/
 
 # Visual Studio
@@ -20,3 +21,11 @@ Saved/
 
 # Mac/Linux
 .DS_Store
+
+# IDE and platform-specific user files
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Unreal packaging artifacts
+Build/*/FileOpenOrder/
+Build/*/*.PackageVersionCounter

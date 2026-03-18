@@ -16,6 +16,7 @@ class BILLARD_API UPoolHUDWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	void SetShotPowerPercent(float InPercent);
 	void SetAimMode(bool bInAimMode);
@@ -26,6 +27,8 @@ public:
 	FPoolResetClicked OnResetClicked;
 
 protected:
+	void BuildWidgetTree();
+
 	UFUNCTION()
 	void HandleResetClicked();
 

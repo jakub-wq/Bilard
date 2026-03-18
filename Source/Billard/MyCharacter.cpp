@@ -116,7 +116,7 @@ void AMyCharacter::EnsureHUDWidget()
 	if (HUDWidget)
 	{
 		HUDWidget->AddToPlayerScreen(10);
-		HUDWidget->SetVisibility(ESlateVisibility::Visible);
+		HUDWidget->SetVisibility(bShowHUDWidget ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		HUDWidget->OnResetClicked.RemoveDynamic(this, &AMyCharacter::HandleResetWidgetClicked);
 		HUDWidget->OnResetClicked.AddDynamic(this, &AMyCharacter::HandleResetWidgetClicked);
 		HUDWidget->SetHintText(TEXT("Podejdź do stołu i kliknij celownikiem w białą bilę."));
@@ -225,7 +225,7 @@ void AMyCharacter::ReleaseShot()
 	}
 
 	bIsChargingShot = false;
-	const FVector ShotDirection = FVector::VectorPlaneProject(AimCamera->GetForwardVector(), FVector::UpVector).GetSafeNormal();
+	const FVector ShotDirection = GetAimDirection();
 	ActiveCueBall->ApplyShotImpulse(ShotDirection, FMath::Max(CurrentShotPower, 450.0f));
 	CurrentShotPower = 0.0f;
 	ExitAimMode();
@@ -304,11 +304,14 @@ void AMyCharacter::PositionAimCamera()
 		return;
 	}
 
-	const FVector AimDir = FRotator(0.0f, AimYawDegrees, 0.0f).Vector();
+	const FVector AimDir = GetAimDirection();
+	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
 	const FVector BallLocation = ActiveCueBall->GetActorLocation();
-	const FVector CameraLocation = BallLocation - AimDir * AimOrbitDistance + FVector(0.0f, 0.0f, AimOrbitHeight);
+	const FVector CameraLocation = BallLocation - AimDir * AimOrbitDistance + UpAxis * AimOrbitHeight;
+	FRotator CameraRotation = FRotationMatrix::MakeFromXZ(AimDir, UpAxis).Rotator();
+	CameraRotation.Pitch += AimPitchDegrees;
 	AimCamera->SetWorldLocation(CameraLocation);
-	AimCamera->SetWorldRotation((BallLocation - CameraLocation).Rotation() + FRotator(AimPitchDegrees, 0.0f, 0.0f));
+	AimCamera->SetWorldRotation(CameraRotation);
 }
 
 void AMyCharacter::UpdateAimMode(float DeltaTime)
@@ -336,13 +339,12 @@ void AMyCharacter::UpdateCueVisual()
 	}
 
 	CueMesh->SetHiddenInGame(false);
-	const FVector ShotDirection = FVector::VectorPlaneProject(AimCamera->GetForwardVector(), FVector::UpVector).GetSafeNormal();
+	const FVector ShotDirection = GetAimDirection();
+	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
 	const FVector BallLocation = ActiveCueBall->GetActorLocation();
 	const float Pullback = bIsChargingShot ? (CuePullbackDistance * (CurrentShotPower / MaxShotPower)) : 0.0f;
-	const FVector CueLocation = BallLocation - ShotDirection * (CueDistanceFromBall + Pullback) + FVector(0.0f, 0.0f, 1.0f);
-	FRotator CueRotation = ShotDirection.Rotation();
-	CueRotation.Pitch = 0.0f;
-	CueRotation.Roll = 0.0f;
+	const FVector CueLocation = BallLocation - ShotDirection * (CueDistanceFromBall + Pullback) + UpAxis * 1.0f;
+	FRotator CueRotation = FRotationMatrix::MakeFromX(ShotDirection).Rotator();
 	CueMesh->SetWorldLocation(CueLocation);
 	CueMesh->SetWorldRotation(CueRotation);
 }
@@ -355,6 +357,20 @@ void AMyCharacter::AttachCueToPlayer()
 	}
 
 	CueMesh->SetHiddenInGame(true);
+}
+
+void AMyCharacter::PrepareForMenu()
+{
+	CancelShot();
+}
+
+void AMyCharacter::SetInGameHUDVisible(bool bVisible)
+{
+	bShowHUDWidget = bVisible;
+	if (HUDWidget)
+	{
+		HUDWidget->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 }
 
 void AMyCharacter::ShowMessage(const FString& Message) const
@@ -474,7 +490,7 @@ void AMyCharacter::DrawTrajectoryPreview() const
 	}
 
 	const FVector Start = ActiveCueBall->GetActorLocation();
-	const FVector Direction = FVector::VectorPlaneProject(AimCamera->GetForwardVector(), FVector::UpVector).GetSafeNormal();
+	const FVector Direction = GetAimDirection();
 	const FVector End = Start + Direction * 500.0f;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(PoolTrajectory), true);
 	Params.AddIgnoredActor(this);
@@ -491,6 +507,12 @@ void AMyCharacter::DrawTrajectoryPreview() const
 	{
 		DrawDebugLine(GetWorld(), Start, End, FColor::Green, false, -1.0f, 0, 2.0f);
 	}
+}
+
+FVector AMyCharacter::GetAimDirection() const
+{
+	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
+	return FVector::VectorPlaneProject(FRotator(0.0f, AimYawDegrees, 0.0f).Vector(), UpAxis).GetSafeNormal();
 }
 
 void AMyCharacter::UpdateNormalFacingToTable()

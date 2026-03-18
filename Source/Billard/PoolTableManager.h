@@ -10,6 +10,7 @@ class APoolCushionWall;
 class AStaticMeshActor;
 class UStaticMeshComponent;
 class UStaticMesh;
+struct FPoolBallSaveState;
 
 UCLASS()
 class BILLARD_API APoolTableManager : public AActor
@@ -24,7 +25,9 @@ public:
 	bool AreBallsStopped() const;
 	void ResetRack();
 	void HandleBallPocketed(APoolBall* Ball, const FVector& PocketLocation);
+	void ApplySavedBallStates(const TArray<FPoolBallSaveState>& SavedStates, int32 SavedPocketedBallCount);
 	int32 GetPocketedBallCount() const { return PocketedBallCount; }
+	const TArray<APoolBall*>& GetSpawnedBalls() const { return SpawnedBalls; }
 
 	FVector GetCueBallStartLocation() const { return CueBallStartLocation; }
 	FVector GetRackCenterLocation() const { return RackCenterLocation; }
@@ -44,7 +47,8 @@ protected:
 	void SpawnWalls();
 	void DestroySpawnedActors();
 	FTransform MakeBallTransform(const FVector& WorldLocation) const;
-	void SpawnWallSegment(const FVector& Center, const FVector& Extent, const FRotator& Rotation);
+	FVector MakeTablePoint(float AlongLong, float AlongShort, float AlongUp = 0.0f) const;
+	void SpawnWallSegment(const FVector& Center, const FVector& Extent, const FVector& Direction);
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Setup")
 	FVector FixedTableLocation = FVector(0.0f, 0.0f, 45.0f);
@@ -53,25 +57,34 @@ protected:
 	FRotator FixedTableRotation = FRotator(0.0f, 0.0f, 0.0f);
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
-	float PlayAreaLengthScale = 0.68f;
+	float PlayAreaLengthScale = 0.90f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
-	float PlayAreaWidthScale = 0.56f;
+	float PlayAreaWidthScale = 0.82f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
 	float BallRadiusScaleOfWidth = 0.032f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
-	float PocketRadiusMultiplier = 2.1f;
+	float PocketRadiusMultiplier = 2.35f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
 	float PocketInset = 1.2f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
-	float WallThicknessMultiplier = 0.85f;
+	float WallThicknessMultiplier = 0.95f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
-	float SurfaceHeightScale = 0.94f;
+	float SurfaceHeightScale = 0.96f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float CornerJawLengthMultiplier = 1.45f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float SideJawLengthMultiplier = 1.2f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float PocketSinkDepthMultiplier = 5.2f;
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
 	float CueBallLengthFactor = 0.33f;

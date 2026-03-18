@@ -19,6 +19,8 @@ class BILLARD_API AMyCharacter : public ACharacter
 public:
 	AMyCharacter();
 	virtual void Tick(float DeltaTime) override;
+	void PrepareForMenu();
+	void SetInGameHUDVisible(bool bVisible);
 
 protected:
 	virtual void BeginPlay() override;
@@ -50,6 +52,7 @@ protected:
 	void DrawTrajectoryPreview() const;
 	void PositionAimCamera();
 	void UpdateNormalFacingToTable();
+	FVector GetAimDirection() const;
 
 	UFUNCTION()
 	void HandleResetWidgetClicked();
@@ -104,4 +107,5 @@ protected:
 
 	mutable TWeakObjectPtr<APoolTableManager> CachedPoolManager;
 	float AimYawDegrees = 0.0f;
+	bool bShowHUDWidget = true;
 };

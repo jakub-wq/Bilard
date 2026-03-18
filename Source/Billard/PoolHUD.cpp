@@ -11,6 +11,11 @@ void APoolHUD::DrawHUD()
 		return;
 	}
 
+	if (PlayerOwner && PlayerOwner->IsPaused())
+	{
+		return;
+	}
+
 	const FVector2D Center(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
 	const float Gap = 2.0f;
 

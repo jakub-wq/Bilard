@@ -5,9 +5,11 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Math/RotationMatrix.h"
 #include "PoolBall.h"
 #include "PoolCushionWall.h"
 #include "PoolPocketTrigger.h"
+#include "PoolSaveGame.h"
 
 void APoolTableManager::SpawnOrReuseFixedTable()
 {
@@ -101,10 +103,10 @@ void APoolTableManager::BuildTableData()
 		TableCenter = FixedTableLocation;
 		HalfOuterLength = 120.0f;
 		HalfOuterWidth = 70.0f;
-		HalfPlayLength = 82.0f;
-		HalfPlayWidth = 36.0f;
-		BallRadius = 3.1f;
-		PocketRadius = 7.2f;
+		HalfPlayLength = 98.0f;
+		HalfPlayWidth = 48.0f;
+		BallRadius = 2.86f;
+		PocketRadius = 6.75f;
 		SurfacePoint = FixedTableLocation + FVector(0.0f, 0.0f, 44.0f);
 	}
 	else
@@ -141,6 +143,11 @@ void APoolTableManager::BuildTableData()
 FTransform APoolTableManager::MakeBallTransform(const FVector& WorldLocation) const
 {
 	return FTransform(FRotator::ZeroRotator, WorldLocation, FVector(1.0f));
+}
+
+FVector APoolTableManager::MakeTablePoint(float AlongLong, float AlongShort, float AlongUp) const
+{
+	return SurfacePoint + TableLongAxis * AlongLong + TableShortAxis * AlongShort + TableUpAxis * AlongUp;
 }
 
 void APoolTableManager::DestroySpawnedActors()
@@ -220,13 +227,13 @@ void APoolTableManager::SpawnBalls()
 	}
 
 	int32 BallIndex = 1;
-	const FVector Apex = RackCenterLocation + TableLongAxis * (RowSpacing * 2.0f);
+	const FVector Apex = RackCenterLocation - TableLongAxis * (RowSpacing * 2.0f);
 	for (int32 Row = 0; Row < 5; ++Row)
 	{
 		for (int32 Col = 0; Col <= Row; ++Col)
 		{
 			const FVector Position = Apex
-				- TableLongAxis * (Row * RowSpacing)
+				+ TableLongAxis * (Row * RowSpacing)
 				+ TableShortAxis * ((Col - Row * 0.5f) * LateralSpacing)
 				+ TableUpAxis * 0.0f;
 
@@ -246,18 +253,19 @@ void APoolTableManager::SpawnBalls()
 
 void APoolTableManager::SpawnPockets()
 {
-	const float CornerLong = HalfPlayLength - PocketRadius * 0.95f;
-	const float CornerShort = HalfPlayWidth - PocketRadius * 0.95f;
-	const float MiddleShort = HalfPlayWidth - PocketRadius * 0.7f;
-	const FVector TriggerDown = -TableUpAxis * (BallRadius * 0.45f);
+	const float PocketCenterInset = FMath::Max(PocketRadius * 0.48f, BallRadius * PocketInset);
+	const float CornerLong = FMath::Max(0.0f, HalfPlayLength - PocketCenterInset);
+	const float CornerShort = FMath::Max(0.0f, HalfPlayWidth - PocketCenterInset);
+	const float MiddleShort = FMath::Max(0.0f, HalfPlayWidth - FMath::Max(PocketRadius * 0.35f, BallRadius * PocketInset * 0.85f));
+	const FVector TriggerDown = -TableUpAxis * (BallRadius * 0.65f);
 
 	const TArray<FVector> PocketPositions = {
-		SurfacePoint + TableLongAxis * CornerLong + TableShortAxis * CornerShort + TriggerDown,
-		SurfacePoint + TableLongAxis * CornerLong - TableShortAxis * CornerShort + TriggerDown,
-		SurfacePoint - TableLongAxis * CornerLong + TableShortAxis * CornerShort + TriggerDown,
-		SurfacePoint - TableLongAxis * CornerLong - TableShortAxis * CornerShort + TriggerDown,
-		SurfacePoint + TableShortAxis * MiddleShort + TriggerDown,
-		SurfacePoint - TableShortAxis * MiddleShort + TriggerDown
+		MakeTablePoint(CornerLong, CornerShort) + TriggerDown,
+		MakeTablePoint(CornerLong, -CornerShort) + TriggerDown,
+		MakeTablePoint(-CornerLong, CornerShort) + TriggerDown,
+		MakeTablePoint(-CornerLong, -CornerShort) + TriggerDown,
+		MakeTablePoint(0.0f, MiddleShort) + TriggerDown,
+		MakeTablePoint(0.0f, -MiddleShort) + TriggerDown
 	};
 
 	for (const FVector& PocketPosition : PocketPositions)
@@ -271,8 +279,14 @@ void APoolTableManager::SpawnPockets()
 	}
 }
 
-void APoolTableManager::SpawnWallSegment(const FVector& Center, const FVector& Extent, const FRotator& Rotation)
+void APoolTableManager::SpawnWallSegment(const FVector& Center, const FVector& Extent, const FVector& Direction)
 {
+	if (!GetWorld() || Direction.IsNearlyZero())
+	{
+		return;
+	}
+
+	const FRotator Rotation = FRotationMatrix::MakeFromXZ(Direction.GetSafeNormal(), TableUpAxis).Rotator();
 	if (APoolCushionWall* Wall = GetWorld()->SpawnActor<APoolCushionWall>(APoolCushionWall::StaticClass(), Center, Rotation))
 	{
 		Wall->ConfigureWall(Extent);
@@ -282,38 +296,53 @@ void APoolTableManager::SpawnWallSegment(const FVector& Center, const FVector& E
 
 void APoolTableManager::SpawnWalls()
 {
-	const float Thickness = BallRadius * 1.1f;
-	const float Height = BallRadius * 4.0f;
-	const float FloorHalfHeight = BallRadius * 0.6f;
-	const float CornerGap = PocketRadius * 1.35f;
-	const float MiddleGap = PocketRadius * 1.55f;
-	const float SurfaceWallZ = SurfacePoint.Z + Height * 0.45f;
-	const FRotator LongRotation = TableLongAxis.Rotation();
-	const FRotator ShortRotation = TableShortAxis.Rotation();
+	const float Thickness = FMath::Max(2.0f, BallRadius * WallThicknessMultiplier);
+	const float Height = BallRadius * 3.8f;
+	const float FloorHalfHeight = BallRadius * 0.7f;
+	const float WallCenterUp = Height * 0.55f;
+	const float RailInset = FMath::Max(Thickness * 0.85f, BallRadius * 0.95f);
+	const float RailLong = FMath::Max(BallRadius * 6.0f, HalfPlayLength - RailInset);
+	const float RailShort = FMath::Max(BallRadius * 4.0f, HalfPlayWidth - RailInset);
+	const float CornerGap = PocketRadius * 1.05f;
+	const float MiddleGap = PocketRadius * 1.15f;
+	const float CornerJawLength = PocketRadius * CornerJawLengthMultiplier;
+	const float SideJawLength = PocketRadius * SideJawLengthMultiplier;
+	const float LongStraightHalf = FMath::Max(BallRadius * 2.2f, (RailLong - CornerGap - MiddleGap) * 0.5f);
+	const float ShortStraightHalf = FMath::Max(BallRadius * 2.0f, RailShort - CornerGap);
+	const FRotator FloorRotation = FRotationMatrix::MakeFromXZ(TableLongAxis, TableUpAxis).Rotator();
 
-	PlaySurfaceFloor = GetWorld()->SpawnActor<APoolCushionWall>(APoolCushionWall::StaticClass(), SurfacePoint - TableUpAxis * FloorHalfHeight, FRotator::ZeroRotator);
+	PlaySurfaceFloor = GetWorld()->SpawnActor<APoolCushionWall>(APoolCushionWall::StaticClass(), MakeTablePoint(0.0f, 0.0f, -FloorHalfHeight), FloorRotation);
 	if (PlaySurfaceFloor)
 	{
-		PlaySurfaceFloor->ConfigureWall(FVector(HalfPlayLength, HalfPlayWidth, FloorHalfHeight));
+		PlaySurfaceFloor->ConfigureWall(FVector(RailLong + Thickness, RailShort + Thickness, FloorHalfHeight));
 	}
 
-	const float LongSegmentHalf = FMath::Max(8.0f, (HalfPlayLength - CornerGap - MiddleGap) * 0.5f);
-	const float ShortSegmentHalf = FMath::Max(8.0f, HalfPlayWidth - CornerGap);
-
-	SpawnWallSegment(SurfacePoint + TableShortAxis * HalfPlayWidth + TableLongAxis * (MiddleGap + LongSegmentHalf), FVector(LongSegmentHalf, Thickness, Height), LongRotation);
-	SpawnWallSegment(SurfacePoint + TableShortAxis * HalfPlayWidth - TableLongAxis * (MiddleGap + LongSegmentHalf), FVector(LongSegmentHalf, Thickness, Height), LongRotation);
-	SpawnWallSegment(SurfacePoint - TableShortAxis * HalfPlayWidth + TableLongAxis * (MiddleGap + LongSegmentHalf), FVector(LongSegmentHalf, Thickness, Height), LongRotation);
-	SpawnWallSegment(SurfacePoint - TableShortAxis * HalfPlayWidth - TableLongAxis * (MiddleGap + LongSegmentHalf), FVector(LongSegmentHalf, Thickness, Height), LongRotation);
-	SpawnWallSegment(SurfacePoint + TableLongAxis * HalfPlayLength + FVector(0.0f, 0.0f, SurfaceWallZ - SurfacePoint.Z), FVector(Thickness, ShortSegmentHalf, Height), ShortRotation);
-	SpawnWallSegment(SurfacePoint - TableLongAxis * HalfPlayLength + FVector(0.0f, 0.0f, SurfaceWallZ - SurfacePoint.Z), FVector(Thickness, ShortSegmentHalf, Height), ShortRotation);
-
-	for (APoolCushionWall* Wall : CushionWalls)
+	for (const float ShortSign : { -1.0f, 1.0f })
 	{
-		if (IsValid(Wall))
+		SpawnWallSegment(MakeTablePoint(MiddleGap + LongStraightHalf, ShortSign * RailShort, WallCenterUp), FVector(LongStraightHalf, Thickness, Height), TableLongAxis);
+		SpawnWallSegment(MakeTablePoint(-(MiddleGap + LongStraightHalf), ShortSign * RailShort, WallCenterUp), FVector(LongStraightHalf, Thickness, Height), TableLongAxis);
+
+		for (const float LongSign : { -1.0f, 1.0f })
 		{
-			FVector Loc = Wall->GetActorLocation();
-			Loc.Z = SurfaceWallZ;
-			Wall->SetActorLocation(Loc);
+			const FVector JawDirection = (-LongSign * TableLongAxis - ShortSign * TableShortAxis).GetSafeNormal();
+			SpawnWallSegment(
+				MakeTablePoint(LongSign * (MiddleGap + SideJawLength * 0.55f), ShortSign * (RailShort - Thickness * 0.35f), WallCenterUp),
+				FVector(SideJawLength, Thickness, Height),
+				JawDirection);
+		}
+	}
+
+	for (const float LongSign : { -1.0f, 1.0f })
+	{
+		SpawnWallSegment(MakeTablePoint(LongSign * RailLong, 0.0f, WallCenterUp), FVector(Thickness, ShortStraightHalf, Height), TableShortAxis);
+
+		for (const float ShortSign : { -1.0f, 1.0f })
+		{
+			const FVector JawDirection = (-LongSign * TableLongAxis - ShortSign * TableShortAxis).GetSafeNormal();
+			SpawnWallSegment(
+				MakeTablePoint(LongSign * (RailLong - CornerGap * 0.55f), ShortSign * (RailShort - CornerGap * 0.55f), WallCenterUp),
+				FVector(CornerJawLength, Thickness, Height),
+				JawDirection);
 		}
 	}
 }
@@ -354,5 +383,47 @@ void APoolTableManager::HandleBallPocketed(APoolBall* Ball, const FVector& Pocke
 	}
 
 	++PocketedBallCount;
-	Ball->BeginPocketSink(PocketLocation - TableUpAxis * (BallRadius * 2.8f));
+	Ball->BeginPocketSink(PocketLocation - TableUpAxis * (BallRadius * PocketSinkDepthMultiplier));
+}
+
+void APoolTableManager::ApplySavedBallStates(const TArray<FPoolBallSaveState>& SavedStates, int32 SavedPocketedBallCount)
+{
+	TMap<int32, APoolBall*> BallLookup;
+	for (APoolBall* Ball : SpawnedBalls)
+	{
+		if (IsValid(Ball))
+		{
+			BallLookup.Add(Ball->IsCueBall() ? 0 : Ball->GetBallNumber(), Ball);
+		}
+	}
+
+	for (const FPoolBallSaveState& SavedState : SavedStates)
+	{
+		const int32 BallKey = SavedState.bCueBall ? 0 : SavedState.BallNumber;
+		APoolBall* const* FoundBall = BallLookup.Find(BallKey);
+		if (!FoundBall || !IsValid(*FoundBall))
+		{
+			continue;
+		}
+
+		APoolBall* Ball = *FoundBall;
+		if (SavedState.bCueBall && SavedState.bPocketed)
+		{
+			Ball->ResetBall(MakeBallTransform(CueBallStartLocation));
+			CueBall = Ball;
+			continue;
+		}
+
+		Ball->ResetBall(SavedState.Transform);
+		if (SavedState.bPocketed)
+		{
+			Ball->PocketBall();
+		}
+		else if (SavedState.bCueBall)
+		{
+			CueBall = Ball;
+		}
+	}
+
+	PocketedBallCount = FMath::Clamp(SavedPocketedBallCount, 0, 15);
 }
