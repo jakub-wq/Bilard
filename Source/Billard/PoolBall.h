@@ -21,6 +21,7 @@ public:
 	void ConfigureBall(bool bInCueBall, int32 InBallNumber, const FLinearColor& InColor);
 	void ResetBall(const FTransform& NewTransform);
 	void PocketBall();
+	void BeginPocketSink(const FVector& SinkTargetLocation);
 	bool IsMoving() const;
 	void ApplyShotImpulse(const FVector& Direction, float Power);
 	void SetBallRadius(float InRadius);
@@ -51,6 +52,9 @@ protected:
 	bool bPocketed = false;
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
+	bool bSinkingIntoPocket = false;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
 	int32 BallNumber = 0;
 
 	UPROPERTY()
@@ -58,4 +62,8 @@ protected:
 
 	float BallRadiusCm = 5.7f;
 	FTransform InitialTransform;
+	FVector PocketSinkStart = FVector::ZeroVector;
+	FVector PocketSinkTarget = FVector::ZeroVector;
+	float PocketSinkAlpha = 0.0f;
+	float PocketSinkDuration = 0.22f;
 };

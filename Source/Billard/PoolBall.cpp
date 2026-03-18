@@ -18,15 +18,21 @@ APoolBall::APoolBall()
 		BallMesh->SetStaticMesh(SphereMesh.Object);
 	}
 
-	BallMesh->SetSimulatePhysics(true);
-	BallMesh->SetEnableGravity(true);
-	BallMesh->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
-	BallMesh->SetNotifyRigidBodyCollision(true);
-	BallMesh->SetLinearDamping(LinearDamping);
-	BallMesh->SetAngularDamping(AngularDamping);
-	BallMesh->SetMassOverrideInKg(NAME_None, 0.17f, true);
-	BallMesh->BodyInstance.bUseCCD = true;
-	BallMesh->SetConstraintMode(EDOFMode::SixDOF);
+	BallMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	BallMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+
+	if (!HasAnyFlags(RF_ClassDefaultObject))
+	{
+		BallMesh->SetSimulatePhysics(true);
+		BallMesh->SetEnableGravity(true);
+		BallMesh->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+		BallMesh->SetNotifyRigidBodyCollision(true);
+		BallMesh->SetLinearDamping(LinearDamping);
+		BallMesh->SetAngularDamping(AngularDamping);
+		BallMesh->SetMassOverrideInKg(NAME_None, 0.17f, true);
+		BallMesh->BodyInstance.bUseCCD = true;
+		BallMesh->SetConstraintMode(EDOFMode::SixDOF);
+	}
 
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BasicMaterial(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	if (BasicMaterial.Succeeded())
@@ -41,12 +47,36 @@ APoolBall::APoolBall()
 void APoolBall::BeginPlay()
 {
 	Super::BeginPlay();
+
+	BallMesh->SetSimulatePhysics(true);
+	BallMesh->SetEnableGravity(true);
+	BallMesh->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+	BallMesh->SetNotifyRigidBodyCollision(true);
+	BallMesh->SetLinearDamping(LinearDamping);
+	BallMesh->SetAngularDamping(AngularDamping);
+	BallMesh->SetMassOverrideInKg(NAME_None, 0.17f, true);
+	BallMesh->BodyInstance.bUseCCD = true;
+	BallMesh->SetConstraintMode(EDOFMode::SixDOF);
+
 	InitialTransform = GetActorTransform();
 }
 
 void APoolBall::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (bSinkingIntoPocket)
+	{
+		PocketSinkAlpha = FMath::Min(1.0f, PocketSinkAlpha + (DeltaTime / FMath::Max(0.01f, PocketSinkDuration)));
+		SetActorLocation(FMath::Lerp(PocketSinkStart, PocketSinkTarget, PocketSinkAlpha), false, nullptr, ETeleportType::TeleportPhysics);
+
+		if (PocketSinkAlpha >= 1.0f)
+		{
+			bSinkingIntoPocket = false;
+			PocketBall();
+		}
+		return;
+	}
 
 	if (BallMesh && !bPocketed)
 	{
@@ -83,10 +113,30 @@ void APoolBall::ConfigureBall(bool bInCueBall, int32 InBallNumber, const FLinear
 	}
 }
 
+void APoolBall::BeginPocketSink(const FVector& SinkTargetLocation)
+{
+	if (bPocketed || !BallMesh)
+	{
+		return;
+	}
+
+	bPocketed = true;
+	bSinkingIntoPocket = true;
+	PocketSinkAlpha = 0.0f;
+	PocketSinkStart = GetActorLocation();
+	PocketSinkTarget = SinkTargetLocation;
+	BallMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+	BallMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	BallMesh->SetSimulatePhysics(false);
+	SetActorEnableCollision(false);
+}
+
 void APoolBall::ResetBall(const FTransform& NewTransform)
 {
 	InitialTransform = NewTransform;
 	bPocketed = false;
+	bSinkingIntoPocket = false;
+	PocketSinkAlpha = 0.0f;
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
 	BallMesh->SetVisibility(true, true);
@@ -100,16 +150,18 @@ void APoolBall::ResetBall(const FTransform& NewTransform)
 
 void APoolBall::PocketBall()
 {
-	if (bPocketed)
+	if (bPocketed && !bSinkingIntoPocket && IsHidden())
 	{
 		return;
 	}
 
 	bPocketed = true;
+	bSinkingIntoPocket = false;
 	BallMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	BallMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	BallMesh->SetSimulatePhysics(false);
 	SetActorEnableCollision(false);
+	BallMesh->SetVisibility(false, true);
 	SetActorHiddenInGame(true);
 }
 

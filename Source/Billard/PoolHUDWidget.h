@@ -20,6 +20,7 @@ public:
 	void SetShotPowerPercent(float InPercent);
 	void SetAimMode(bool bInAimMode);
 	void SetHintText(const FString& InText);
+	void SetPocketedCount(int32 InCount);
 
 	UPROPERTY(BlueprintAssignable, Category = "Billiards")
 	FPoolResetClicked OnResetClicked;
@@ -39,6 +40,9 @@ protected:
 
 	UPROPERTY()
 	UTextBlock* HintText = nullptr;
+
+	UPROPERTY()
+	UTextBlock* PocketedCountText = nullptr;
 
 	UPROPERTY()
 	UProgressBar* PowerBar = nullptr;

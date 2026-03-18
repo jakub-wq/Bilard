@@ -23,7 +23,8 @@ public:
 	APoolBall* GetCueBall() const { return CueBall; }
 	bool AreBallsStopped() const;
 	void ResetRack();
-	void HandleBallPocketed(APoolBall* Ball);
+	void HandleBallPocketed(APoolBall* Ball, const FVector& PocketLocation);
+	int32 GetPocketedBallCount() const { return PocketedBallCount; }
 
 	FVector GetCueBallStartLocation() const { return CueBallStartLocation; }
 	FVector GetRackCenterLocation() const { return RackCenterLocation; }
@@ -68,6 +69,15 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
 	float WallThicknessMultiplier = 0.85f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float SurfaceHeightScale = 0.94f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float CueBallLengthFactor = 0.33f;
+
+	UPROPERTY(EditAnywhere, Category = "Billiards|Tuning")
+	float RackCenterLengthFactor = 0.18f;
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Billiards")
 	AStaticMeshActor* TableActor = nullptr;
@@ -136,4 +146,6 @@ protected:
 	APoolBall* CueBall = nullptr;
 
 	TArray<FTransform> InitialBallTransforms;
+
+	int32 PocketedBallCount = 0;
 };

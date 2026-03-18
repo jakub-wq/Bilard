@@ -1,0 +1,6 @@
+{
+	"C_Cpp.default.compileCommands": "/Users/jakub/UE_5.7/compile_commands.json",
+	"clangd.arguments": [
+		"--compile-commands-dir=/Users/jakub/UE_5.7"
+	]
+}

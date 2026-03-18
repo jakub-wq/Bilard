@@ -35,13 +35,24 @@ void APoolPocketTrigger::HandleOverlap(UPrimitiveComponent* OverlappedComponent,
 {
 	if (APoolBall* Ball = Cast<APoolBall>(OtherActor))
 	{
+		if (!IsEligibleBall(Ball))
+		{
+			return;
+		}
+
 		if (Manager)
 		{
-			Manager->HandleBallPocketed(Ball);
+			Manager->HandleBallPocketed(Ball, GetActorLocation());
 		}
 		else
 		{
 			Ball->PocketBall();
 		}
 	}
+}
+
+bool APoolPocketTrigger::IsEligibleBall(AActor* OtherActor) const
+{
+	const APoolBall* Ball = Cast<APoolBall>(OtherActor);
+	return Ball && !Ball->IsPocketed();
 }

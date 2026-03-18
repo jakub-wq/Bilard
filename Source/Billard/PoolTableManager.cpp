@@ -41,8 +41,10 @@ void APoolTableManager::SpawnOrReuseFixedTable()
 		const FString MeshName = Mesh->GetName();
 		if (MeshName.Contains(TEXT("Billard"), ESearchCase::IgnoreCase) || MeshName.Contains(TEXT("Bilard"), ESearchCase::IgnoreCase))
 		{
-			Candidate->SetActorHiddenInGame(true);
-			Candidate->SetActorEnableCollision(false);
+			TableActor = Candidate;
+			TableMeshComponent = MeshComp;
+			TableMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			return;
 		}
 	}
 
@@ -91,13 +93,12 @@ void APoolTableManager::BuildTableData()
 {
 	SpawnOrReuseFixedTable();
 
-	TableUpAxis = FVector::UpVector;
-	TableLongAxis = FixedTableRotation.RotateVector(FVector::ForwardVector).GetSafeNormal2D();
-	TableShortAxis = FixedTableRotation.RotateVector(FVector::RightVector).GetSafeNormal2D();
-	TableCenter = FixedTableLocation;
-
 	if (!TableMeshComponent || !TableMeshComponent->GetStaticMesh())
 	{
+		TableUpAxis = FVector::UpVector;
+		TableLongAxis = FixedTableRotation.RotateVector(FVector::ForwardVector).GetSafeNormal2D();
+		TableShortAxis = FixedTableRotation.RotateVector(FVector::RightVector).GetSafeNormal2D();
+		TableCenter = FixedTableLocation;
 		HalfOuterLength = 120.0f;
 		HalfOuterWidth = 70.0f;
 		HalfPlayLength = 82.0f;
@@ -108,10 +109,20 @@ void APoolTableManager::BuildTableData()
 	}
 	else
 	{
+		const FTransform MeshTransform = TableMeshComponent->GetComponentTransform();
+		TableUpAxis = MeshTransform.GetUnitAxis(EAxis::Z).GetSafeNormal();
+		const FVector ForwardAxis = FVector::VectorPlaneProject(MeshTransform.GetUnitAxis(EAxis::X), TableUpAxis).GetSafeNormal();
+		const FVector RightAxis = FVector::VectorPlaneProject(MeshTransform.GetUnitAxis(EAxis::Y), TableUpAxis).GetSafeNormal();
+
 		const FBox BoundsBox = TableMeshComponent->GetStaticMesh()->GetBoundingBox();
-		const FVector Extent = BoundsBox.GetExtent() * TableMeshComponent->GetComponentScale().GetAbs();
-		HalfOuterLength = FMath::Max(Extent.X, Extent.Y);
-		HalfOuterWidth = FMath::Min(Extent.X, Extent.Y);
+		const FVector LocalExtent = BoundsBox.GetExtent() * TableMeshComponent->GetComponentScale().GetAbs();
+		const bool bXAxisIsLong = LocalExtent.X >= LocalExtent.Y;
+
+		TableLongAxis = bXAxisIsLong ? ForwardAxis : RightAxis;
+		TableShortAxis = bXAxisIsLong ? RightAxis : ForwardAxis;
+		HalfOuterLength = bXAxisIsLong ? LocalExtent.X : LocalExtent.Y;
+		HalfOuterWidth = bXAxisIsLong ? LocalExtent.Y : LocalExtent.X;
+		TableCenter = TableMeshComponent->Bounds.Origin;
 
 		// Deterministic playfield, tied to the spawned table visual.
 		HalfPlayLength = HalfOuterLength * PlayAreaLengthScale;
@@ -119,12 +130,12 @@ void APoolTableManager::BuildTableData()
 		BallRadius = FMath::Clamp(HalfPlayWidth * BallRadiusScaleOfWidth, 2.8f, 3.5f);
 		PocketRadius = BallRadius * PocketRadiusMultiplier;
 
-		// Fixed felt height for this exact table mesh. This avoids ambiguous collision/bounds issues.
-		SurfacePoint = FixedTableLocation + FVector(0.0f, 0.0f, Extent.Z * 0.78f);
+		// Use world bounds so placement stays correct even if the mesh pivot is not centered on the felt.
+		SurfacePoint = TableCenter + TableUpAxis * (LocalExtent.Z * SurfaceHeightScale);
 	}
 
-	CueBallStartLocation = SurfacePoint - TableLongAxis * (HalfPlayLength * 0.58f) + TableUpAxis * (BallRadius + 0.35f);
-	RackCenterLocation = SurfacePoint + TableLongAxis * (HalfPlayLength * 0.42f) + TableUpAxis * (BallRadius + 0.35f);
+	CueBallStartLocation = SurfacePoint - TableLongAxis * (HalfPlayLength * CueBallLengthFactor) + TableUpAxis * (BallRadius + 0.35f);
+	RackCenterLocation = SurfacePoint + TableLongAxis * (HalfPlayLength * RackCenterLengthFactor) + TableUpAxis * (BallRadius + 0.35f);
 }
 
 FTransform APoolTableManager::MakeBallTransform(const FVector& WorldLocation) const
@@ -168,13 +179,15 @@ void APoolTableManager::DestroySpawnedActors()
 	SpawnedBalls.Reset();
 	InitialBallTransforms.Reset();
 	CueBall = nullptr;
+	PocketedBallCount = 0;
 }
 
 void APoolTableManager::SpawnBalls()
 {
 	const float BallDiameter = BallRadius * 2.0f;
-	const float SpacingX = BallDiameter * 0.98f;
-	const float SpacingY = BallDiameter * 1.05f;
+	const float RackGapFactor = 1.01f;
+	const float LateralSpacing = BallDiameter * RackGapFactor;
+	const float RowSpacing = FMath::Sqrt(3.0f) * BallRadius * RackGapFactor;
 
 	const TArray<FLinearColor> Colors = {
 		FLinearColor(1.0f, 1.0f, 0.0f),
@@ -194,7 +207,10 @@ void APoolTableManager::SpawnBalls()
 		FLinearColor(0.8f, 0.8f, 0.8f)
 	};
 
-	CueBall = GetWorld()->SpawnActor<APoolBall>(APoolBall::StaticClass(), MakeBallTransform(CueBallStartLocation));
+	FActorSpawnParameters BallSpawnParams;
+	BallSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	CueBall = GetWorld()->SpawnActor<APoolBall>(APoolBall::StaticClass(), MakeBallTransform(CueBallStartLocation), BallSpawnParams);
 	if (CueBall)
 	{
 		CueBall->SetBallRadius(BallRadius);
@@ -204,17 +220,17 @@ void APoolTableManager::SpawnBalls()
 	}
 
 	int32 BallIndex = 1;
-	const FVector Apex = RackCenterLocation + TableLongAxis * (SpacingY * 2.0f);
+	const FVector Apex = RackCenterLocation + TableLongAxis * (RowSpacing * 2.0f);
 	for (int32 Row = 0; Row < 5; ++Row)
 	{
 		for (int32 Col = 0; Col <= Row; ++Col)
 		{
 			const FVector Position = Apex
-				- TableLongAxis * (Row * SpacingY)
-				+ TableShortAxis * ((Col - Row * 0.5f) * SpacingX)
+				- TableLongAxis * (Row * RowSpacing)
+				+ TableShortAxis * ((Col - Row * 0.5f) * LateralSpacing)
 				+ TableUpAxis * 0.0f;
 
-			APoolBall* Ball = GetWorld()->SpawnActor<APoolBall>(APoolBall::StaticClass(), MakeBallTransform(Position));
+			APoolBall* Ball = GetWorld()->SpawnActor<APoolBall>(APoolBall::StaticClass(), MakeBallTransform(Position), BallSpawnParams);
 			if (Ball)
 			{
 				Ball->SetBallRadius(BallRadius);
@@ -233,15 +249,15 @@ void APoolTableManager::SpawnPockets()
 	const float CornerLong = HalfPlayLength - PocketRadius * 0.95f;
 	const float CornerShort = HalfPlayWidth - PocketRadius * 0.95f;
 	const float MiddleShort = HalfPlayWidth - PocketRadius * 0.7f;
-	const FVector Down = -TableUpAxis * (BallRadius * 0.75f);
+	const FVector TriggerDown = -TableUpAxis * (BallRadius * 0.45f);
 
 	const TArray<FVector> PocketPositions = {
-		SurfacePoint + TableLongAxis * CornerLong + TableShortAxis * CornerShort + Down,
-		SurfacePoint + TableLongAxis * CornerLong - TableShortAxis * CornerShort + Down,
-		SurfacePoint - TableLongAxis * CornerLong + TableShortAxis * CornerShort + Down,
-		SurfacePoint - TableLongAxis * CornerLong - TableShortAxis * CornerShort + Down,
-		SurfacePoint + TableShortAxis * MiddleShort + Down,
-		SurfacePoint - TableShortAxis * MiddleShort + Down
+		SurfacePoint + TableLongAxis * CornerLong + TableShortAxis * CornerShort + TriggerDown,
+		SurfacePoint + TableLongAxis * CornerLong - TableShortAxis * CornerShort + TriggerDown,
+		SurfacePoint - TableLongAxis * CornerLong + TableShortAxis * CornerShort + TriggerDown,
+		SurfacePoint - TableLongAxis * CornerLong - TableShortAxis * CornerShort + TriggerDown,
+		SurfacePoint + TableShortAxis * MiddleShort + TriggerDown,
+		SurfacePoint - TableShortAxis * MiddleShort + TriggerDown
 	};
 
 	for (const FVector& PocketPosition : PocketPositions)
@@ -323,9 +339,9 @@ void APoolTableManager::ResetRack()
 	SpawnBalls();
 }
 
-void APoolTableManager::HandleBallPocketed(APoolBall* Ball)
+void APoolTableManager::HandleBallPocketed(APoolBall* Ball, const FVector& PocketLocation)
 {
-	if (!IsValid(Ball))
+	if (!IsValid(Ball) || Ball->IsPocketed())
 	{
 		return;
 	}
@@ -337,5 +353,6 @@ void APoolTableManager::HandleBallPocketed(APoolBall* Ball)
 		return;
 	}
 
-	Ball->PocketBall();
+	++PocketedBallCount;
+	Ball->BeginPocketSink(PocketLocation - TableUpAxis * (BallRadius * 2.8f));
 }

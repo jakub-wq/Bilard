@@ -1,19 +1,23 @@
 #include "MyCharacter.h"
 
 #include "Camera/CameraComponent.h"
+#include "CollisionShape.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "PoolBall.h"
 #include "PoolGameMode.h"
 #include "PoolHUDWidget.h"
 #include "PoolTableManager.h"
 #include "UObject/ConstructorHelpers.h"
+#include "EngineUtils.h"
 
 AMyCharacter::AMyCharacter()
 {
@@ -92,18 +96,30 @@ void AMyCharacter::Tick(float DeltaTime)
 
 void AMyCharacter::EnsureHUDWidget()
 {
-	if (HUDWidget || !IsLocallyControlled())
+	if (HUDWidget)
 	{
 		return;
 	}
 
-	HUDWidget = CreateWidget<UPoolHUDWidget>(GetWorld(), UPoolHUDWidget::StaticClass());
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController)
+	{
+		PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	}
+
+	if (!PlayerController || !PlayerController->IsLocalController())
+	{
+		return;
+	}
+
+	HUDWidget = CreateWidget<UPoolHUDWidget>(PlayerController, UPoolHUDWidget::StaticClass());
 	if (HUDWidget)
 	{
-		HUDWidget->AddToViewport(10);
+		HUDWidget->AddToPlayerScreen(10);
+		HUDWidget->SetVisibility(ESlateVisibility::Visible);
 		HUDWidget->OnResetClicked.RemoveDynamic(this, &AMyCharacter::HandleResetWidgetClicked);
 		HUDWidget->OnResetClicked.AddDynamic(this, &AMyCharacter::HandleResetWidgetClicked);
-		HUDWidget->SetHintText(TEXT("Podejdź do białej bili i kliknij LPM, aby wejść w tryb strzału."));
+		HUDWidget->SetHintText(TEXT("Podejdź do stołu i kliknij celownikiem w białą bilę."));
 	}
 }
 
@@ -358,10 +374,23 @@ APoolBall* AMyCharacter::FindInteractCueBall() const
 	if (APoolTableManager* Manager = GetPoolManager())
 	{
 		APoolBall* CueBall = Manager->GetCueBall();
-		if (CueBall)
+		if (CueBall && !CueBall->IsPocketed() && FirstPersonCamera && GetWorld())
 		{
-			const float Dist = FVector::Dist(GetActorLocation(), CueBall->GetActorLocation());
-			if (Dist <= InteractDistance)
+			const FVector Start = FirstPersonCamera->GetComponentLocation();
+			const FVector End = Start + FirstPersonCamera->GetForwardVector() * InteractDistance;
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(PoolCueBallInteract), true);
+			Params.AddIgnoredActor(this);
+			FHitResult Hit;
+			const bool bHitSomething = GetWorld()->SweepSingleByChannel(
+				Hit,
+				Start,
+				End,
+				FQuat::Identity,
+				ECC_Visibility,
+				FCollisionShape::MakeSphere(FMath::Max(5.0f, Manager->GetBallRadius() * 0.55f)),
+				Params);
+
+			if (bHitSomething && Hit.GetActor() == CueBall)
 			{
 				return CueBall;
 			}
@@ -378,7 +407,7 @@ bool AMyCharacter::TryEnterAimMode()
 		return true;
 	}
 
-	ShowMessage(TEXT("Podejdź bliżej stołu i białej bili."));
+	ShowMessage(TEXT("Podejdź bliżej stołu i kliknij celownikiem w białą bilę."));
 	return false;
 }
 
@@ -392,7 +421,31 @@ APoolTableManager* AMyCharacter::GetPoolManager() const
 	if (const APoolGameMode* GameMode = GetWorld() ? Cast<APoolGameMode>(GetWorld()->GetAuthGameMode()) : nullptr)
 	{
 		CachedPoolManager = GameMode->GetPoolManager();
-		return CachedPoolManager.Get();
+		if (CachedPoolManager.IsValid())
+		{
+			return CachedPoolManager.Get();
+		}
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<APoolTableManager> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				CachedPoolManager = *It;
+				return CachedPoolManager.Get();
+			}
+		}
+
+		if (HasAuthority())
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			SpawnParams.Name = TEXT("RuntimePoolTableManagerFallback");
+			CachedPoolManager = World->SpawnActor<APoolTableManager>(APoolTableManager::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			return CachedPoolManager.Get();
+		}
 	}
 
 	return nullptr;
@@ -407,6 +460,10 @@ void AMyCharacter::UpdateHUD()
 
 	HUDWidget->SetAimMode(bIsAimMode);
 	HUDWidget->SetShotPowerPercent(MaxShotPower > 0.0f ? CurrentShotPower / MaxShotPower : 0.0f);
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		HUDWidget->SetPocketedCount(Manager->GetPocketedBallCount());
+	}
 }
 
 void AMyCharacter::DrawTrajectoryPreview() const
@@ -440,7 +497,7 @@ void AMyCharacter::UpdateNormalFacingToTable()
 {
 	if (APoolTableManager* Manager = GetPoolManager())
 	{
-		const FVector AimLocation = Manager->GetCueBallStartLocation() - Manager->GetTableLongAxis() * 120.0f;
+		const FVector AimLocation = Manager->GetCueBallStartLocation() - Manager->GetTableLongAxis() * 190.0f;
 		const FVector Desired = Manager->GetCueBallStartLocation() - AimLocation;
 		SetActorLocation(FVector(AimLocation.X, AimLocation.Y, GetActorLocation().Z));
 		if (Controller)
