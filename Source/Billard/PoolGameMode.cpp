@@ -28,6 +28,10 @@ void APoolGameMode::StartPlay()
 {
 	Super::StartPlay();
 	ResolvePoolManager();
+	if (PoolManager)
+	{
+		PoolManager->ResetRack();
+	}
 }
 
 void APoolGameMode::ResolvePoolManager()
@@ -117,7 +121,11 @@ bool APoolGameMode::LoadSavedState()
 	}
 
 	PoolManager->ResetRack();
-	PoolManager->ApplySavedBallStates(SaveGame->BallStates, SaveGame->PocketedBallCount);
+	if (!PoolManager->ApplySavedBallStates(SaveGame->BallStates, SaveGame->PocketedBallCount))
+	{
+		ClearSavedGameState();
+		return false;
+	}
 
 	if (SaveGame->bHasPlayerState)
 	{

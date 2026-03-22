@@ -5,7 +5,6 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -18,6 +17,37 @@
 #include "PoolTableManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EngineUtils.h"
+
+namespace
+{
+	float GetMeshLongestExtent(const UStaticMesh* Mesh)
+	{
+		if (!Mesh)
+		{
+			return 0.0f;
+		}
+
+		return Mesh->GetBoundingBox().GetExtent().GetMax();
+	}
+
+	FVector ComputeCueMeshScale(const UStaticMesh* Mesh, float DesiredCueLength)
+	{
+		const float LongestExtent = GetMeshLongestExtent(Mesh);
+		if (LongestExtent <= KINDA_SMALL_NUMBER)
+		{
+			return FVector(1.0f);
+		}
+
+		const float CurrentLength = LongestExtent * 2.0f;
+		if (CurrentLength >= DesiredCueLength * 0.65f)
+		{
+			return FVector(1.0f);
+		}
+
+		const float UniformScale = DesiredCueLength / CurrentLength;
+		return FVector(UniformScale);
+	}
+}
 
 AMyCharacter::AMyCharacter()
 {
@@ -52,19 +82,28 @@ AMyCharacter::AMyCharacter()
 	CueMesh->SetCastShadow(true);
 	CueMesh->SetHiddenInGame(true);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CueAsset(TEXT("/Game/ThirdPerson/Kij.Kij"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CueAsset(TEXT("/Game/Billiards/Cues/CueStick_A_Source.CueStick_A_Source"));
 	if (CueAsset.Succeeded())
 	{
 		CueMesh->SetStaticMesh(CueAsset.Object);
-		CueMesh->SetRelativeScale3D(FVector(1.0f));
+		CueMesh->SetRelativeScale3D(ComputeCueMeshScale(CueAsset.Object, DesiredCueLength));
 	}
 	else
 	{
-		static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-		if (CylinderMesh.Succeeded())
+		static ConstructorHelpers::FObjectFinder<UStaticMesh> LegacyCueAsset(TEXT("/Game/ThirdPerson/Kij.Kij"));
+		if (LegacyCueAsset.Succeeded())
 		{
-			CueMesh->SetStaticMesh(CylinderMesh.Object);
-			CueMesh->SetRelativeScale3D(FVector(0.03f, 0.03f, 1.7f));
+			CueMesh->SetStaticMesh(LegacyCueAsset.Object);
+			CueMesh->SetRelativeScale3D(ComputeCueMeshScale(LegacyCueAsset.Object, DesiredCueLength));
+		}
+		else
+		{
+			static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+			if (CylinderMesh.Succeeded())
+			{
+				CueMesh->SetStaticMesh(CylinderMesh.Object);
+				CueMesh->SetRelativeScale3D(FVector(0.03f, 0.03f, 1.7f));
+			}
 		}
 	}
 }
@@ -82,6 +121,7 @@ void AMyCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	EnsureHUDWidget();
+	SyncCueBallPlacementMode();
 
 	if (bIsChargingShot)
 	{
@@ -89,6 +129,7 @@ void AMyCharacter::Tick(float DeltaTime)
 	}
 
 	UpdateAimMode(DeltaTime);
+	UpdateCueBallPlacementMode(DeltaTime);
 	UpdateCueVisual();
 	UpdateHUD();
 }
@@ -147,6 +188,18 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AMyCharacter::MoveForward(float Value)
 {
+	if (bIsCueBallPlacementMode)
+	{
+		PlacementForwardInput = Value;
+		return;
+	}
+
+	if (bIsAimMode)
+	{
+		UpdateSpinInput(0.0f, Value * SpinAdjustSpeed);
+		return;
+	}
+
 	if (Controller && !FMath::IsNearlyZero(Value) && !bIsAimMode)
 	{
 		AddMovementInput(GetActorForwardVector(), Value);
@@ -155,6 +208,18 @@ void AMyCharacter::MoveForward(float Value)
 
 void AMyCharacter::MoveRight(float Value)
 {
+	if (bIsCueBallPlacementMode)
+	{
+		PlacementRightInput = Value;
+		return;
+	}
+
+	if (bIsAimMode)
+	{
+		UpdateSpinInput(Value * SpinAdjustSpeed, 0.0f);
+		return;
+	}
+
 	if (Controller && !FMath::IsNearlyZero(Value) && !bIsAimMode)
 	{
 		AddMovementInput(GetActorRightVector(), Value);
@@ -163,6 +228,11 @@ void AMyCharacter::MoveRight(float Value)
 
 void AMyCharacter::TurnAtRate(float Value)
 {
+	if (bIsCueBallPlacementMode)
+	{
+		return;
+	}
+
 	if (bIsAimMode)
 	{
 		AimYawDegrees += Value * 1.8f;
@@ -173,6 +243,17 @@ void AMyCharacter::TurnAtRate(float Value)
 
 void AMyCharacter::LookUpAtRate(float Value)
 {
+	if (bIsCueBallPlacementMode)
+	{
+		return;
+	}
+
+	if (bIsAimMode)
+	{
+		UpdateSpinInput(0.0f, Value * SpinAdjustSpeed);
+		return;
+	}
+
 	if (!bIsAimMode)
 	{
 		AddControllerPitchInput(Value);
@@ -181,6 +262,25 @@ void AMyCharacter::LookUpAtRate(float Value)
 
 void AMyCharacter::PrimaryActionPressed()
 {
+	SyncCueBallPlacementMode();
+
+	if (bIsCueBallPlacementMode)
+	{
+		if (APoolTableManager* Manager = GetPoolManager())
+		{
+			if (Manager->ConfirmCueBallPlacement(CueBallPlacementLocation))
+			{
+				ExitCueBallPlacementMode();
+				ShowMessage(TEXT("Ustawiono białą bilę. Kliknij ją, aby wejść w tryb uderzenia."));
+			}
+			else
+			{
+				ShowMessage(TEXT("Nie można ustawić białej bili w tym miejscu."));
+			}
+		}
+		return;
+	}
+
 	if (bIsAimMode)
 	{
 		StartChargingShot();
@@ -226,15 +326,24 @@ void AMyCharacter::ReleaseShot()
 
 	bIsChargingShot = false;
 	const FVector ShotDirection = GetAimDirection();
-	ActiveCueBall->ApplyShotImpulse(ShotDirection, FMath::Max(CurrentShotPower, 450.0f));
+	const FVector TableUpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
+	ActiveCueBall->ApplyShotImpulse(ShotDirection, FMath::Max(CurrentShotPower, 240.0f), SpinInput, TableUpAxis);
 	CurrentShotPower = 0.0f;
+	SpinInput = FVector2D::ZeroVector;
 	ExitAimMode();
 }
 
 void AMyCharacter::CancelShot()
 {
+	if (bIsCueBallPlacementMode)
+	{
+		ShowMessage(TEXT("Ustaw białą bilę na stole i kliknij, aby potwierdzić."));
+		return;
+	}
+
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
+	SpinInput = FVector2D::ZeroVector;
 	if (bIsAimMode)
 	{
 		ExitAimMode();
@@ -247,6 +356,7 @@ void AMyCharacter::ResetBalls()
 	{
 		Manager->ResetRack();
 		ExitAimMode();
+		ExitCueBallPlacementMode();
 		UpdateNormalFacingToTable();
 		ShowMessage(TEXT("Układ bil został zresetowany."));
 	}
@@ -268,6 +378,7 @@ void AMyCharacter::EnterAimMode(APoolBall* InCueBall)
 	bIsAimMode = true;
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
+	SpinInput = FVector2D::ZeroVector;
 	GetCharacterMovement()->StopMovementImmediately();
 
 	if (APoolTableManager* Manager = GetPoolManager())
@@ -283,7 +394,7 @@ void AMyCharacter::EnterAimMode(APoolBall* InCueBall)
 	FirstPersonCamera->SetActive(false);
 	AimCamera->SetActive(true);
 	PositionAimCamera();
-	ShowMessage(TEXT("Tryb uderzenia: przytrzymaj LPM, puść aby uderzyć. PPM anuluje."));
+	ShowMessage(TEXT("Tryb uderzenia: LPM ładuje strzał, PPM anuluje, A/D nadaje boczną rotację, W/S lub ruch myszy góra/dół dodaje górną/dolną rotację."));
 }
 
 void AMyCharacter::ExitAimMode()
@@ -291,10 +402,76 @@ void AMyCharacter::ExitAimMode()
 	bIsAimMode = false;
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
+	SpinInput = FVector2D::ZeroVector;
 	ActiveCueBall = nullptr;
 	AimCamera->SetActive(false);
 	FirstPersonCamera->SetActive(true);
 	AttachCueToPlayer();
+}
+
+void AMyCharacter::EnterCueBallPlacementMode()
+{
+	if (bIsCueBallPlacementMode)
+	{
+		return;
+	}
+
+	ExitAimMode();
+	bIsCueBallPlacementMode = true;
+	PlacementForwardInput = 0.0f;
+	PlacementRightInput = 0.0f;
+
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		CueBallPlacementLocation = Manager->GetCueBallInHandLocation();
+		Manager->UpdateCueBallInHandPreview(CueBallPlacementLocation);
+	}
+
+	FirstPersonCamera->SetActive(false);
+	AimCamera->SetActive(true);
+	PositionCueBallPlacementCamera();
+	UE_LOG(
+		LogTemp,
+		Display,
+		TEXT("Character entered cue-ball placement mode: character=%s location=%s"),
+		*GetNameSafe(this),
+		*CueBallPlacementLocation.ToCompactString());
+	ShowMessage(TEXT("Biała bila w ręce: W/S/A/D przesuwa bilę, LPM potwierdza ustawienie."));
+}
+
+void AMyCharacter::ExitCueBallPlacementMode()
+{
+	bIsCueBallPlacementMode = false;
+	PlacementForwardInput = 0.0f;
+	PlacementRightInput = 0.0f;
+
+	if (!bIsAimMode)
+	{
+		AimCamera->SetActive(false);
+		FirstPersonCamera->SetActive(true);
+	}
+}
+
+void AMyCharacter::SyncCueBallPlacementMode()
+{
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		if (Manager->IsCueBallInHand())
+		{
+			if (!bIsCueBallPlacementMode)
+			{
+				EnterCueBallPlacementMode();
+			}
+		}
+		else if (bIsCueBallPlacementMode)
+		{
+			ExitCueBallPlacementMode();
+		}
+	}
+	else if (bIsCueBallPlacementMode)
+	{
+		ExitCueBallPlacementMode();
+	}
 }
 
 void AMyCharacter::PositionAimCamera()
@@ -314,6 +491,18 @@ void AMyCharacter::PositionAimCamera()
 	AimCamera->SetWorldRotation(CameraRotation);
 }
 
+void AMyCharacter::PositionCueBallPlacementCamera()
+{
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		const FVector UpAxis = Manager->GetTableUpAxis();
+		const FVector CameraLocation = Manager->GetTableSurfaceCenter() + UpAxis * PlacementCameraHeight;
+		const FRotator CameraRotation = FRotationMatrix::MakeFromXZ(-UpAxis, Manager->GetTableLongAxis()).Rotator();
+		AimCamera->SetWorldLocation(CameraLocation);
+		AimCamera->SetWorldRotation(CameraRotation);
+	}
+}
+
 void AMyCharacter::UpdateAimMode(float DeltaTime)
 {
 	if (!bIsAimMode || !ActiveCueBall)
@@ -322,7 +511,59 @@ void AMyCharacter::UpdateAimMode(float DeltaTime)
 	}
 
 	PositionAimCamera();
-	DrawTrajectoryPreview();
+}
+
+void AMyCharacter::UpdateCueBallPlacementMode(float DeltaTime)
+{
+	SyncCueBallPlacementMode();
+
+	if (!bIsCueBallPlacementMode)
+	{
+		return;
+	}
+
+	APoolTableManager* Manager = GetPoolManager();
+	if (!Manager)
+	{
+		return;
+	}
+
+	const FVector DeltaMove =
+		Manager->GetTableLongAxis() * (PlacementForwardInput * PlacementMoveSpeed * DeltaTime)
+		+ Manager->GetTableShortAxis() * (PlacementRightInput * PlacementMoveSpeed * DeltaTime);
+	CueBallPlacementLocation += DeltaMove;
+	Manager->UpdateCueBallInHandPreview(CueBallPlacementLocation);
+	CueBallPlacementLocation = Manager->GetCueBallInHandLocation();
+	PositionCueBallPlacementCamera();
+}
+
+FTransform AMyCharacter::CalculateCueVisualTransform(
+	const FVector& BallLocation,
+	const FVector& ShotDirection,
+	const FVector& UpAxis,
+	float InCueDistanceFromBall,
+	float InCuePullbackDistance,
+	float InCurrentShotPower,
+	float InMaxShotPower,
+	float InCueSideOffset,
+	float InCueHeightOffset,
+	const FRotator& InCueAimRotationOffset,
+	bool bInIsChargingShot)
+{
+	const FVector AimDirection = ShotDirection.GetSafeNormal();
+	const FVector TableUpAxis = UpAxis.GetSafeNormal();
+	const FVector SideAxis = FVector::CrossProduct(TableUpAxis, AimDirection).GetSafeNormal();
+	const float Pullback = bInIsChargingShot && InMaxShotPower > KINDA_SMALL_NUMBER
+		? (InCuePullbackDistance * (InCurrentShotPower / InMaxShotPower))
+		: 0.0f;
+
+	const FVector CueLocation =
+		BallLocation
+		- AimDirection * (InCueDistanceFromBall + Pullback)
+		+ SideAxis * InCueSideOffset
+		+ TableUpAxis * InCueHeightOffset;
+	const FRotator CueRotation = FRotationMatrix::MakeFromX(-AimDirection).Rotator() + InCueAimRotationOffset;
+	return FTransform(CueRotation, CueLocation);
 }
 
 void AMyCharacter::UpdateCueVisual()
@@ -339,14 +580,24 @@ void AMyCharacter::UpdateCueVisual()
 	}
 
 	CueMesh->SetHiddenInGame(false);
+	CueMesh->SetVisibility(true, true);
 	const FVector ShotDirection = GetAimDirection();
 	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
 	const FVector BallLocation = ActiveCueBall->GetActorLocation();
-	const float Pullback = bIsChargingShot ? (CuePullbackDistance * (CurrentShotPower / MaxShotPower)) : 0.0f;
-	const FVector CueLocation = BallLocation - ShotDirection * (CueDistanceFromBall + Pullback) + UpAxis * 1.0f;
-	FRotator CueRotation = FRotationMatrix::MakeFromX(ShotDirection).Rotator();
-	CueMesh->SetWorldLocation(CueLocation);
-	CueMesh->SetWorldRotation(CueRotation);
+	const FTransform CueTransform = CalculateCueVisualTransform(
+		BallLocation,
+		ShotDirection,
+		UpAxis,
+		CueDistanceFromBall,
+		CuePullbackDistance,
+		CurrentShotPower,
+		MaxShotPower,
+		CueSideOffset,
+		CueHeightOffset,
+		CueAimRotationOffset,
+		bIsChargingShot);
+	CueMesh->SetWorldLocation(CueTransform.GetLocation());
+	CueMesh->SetWorldRotation(CueTransform.Rotator());
 }
 
 void AMyCharacter::AttachCueToPlayer()
@@ -357,6 +608,7 @@ void AMyCharacter::AttachCueToPlayer()
 	}
 
 	CueMesh->SetHiddenInGame(true);
+	CueMesh->SetVisibility(false, true);
 }
 
 void AMyCharacter::PrepareForMenu()
@@ -394,19 +646,21 @@ APoolBall* AMyCharacter::FindInteractCueBall() const
 		{
 			const FVector Start = FirstPersonCamera->GetComponentLocation();
 			const FVector End = Start + FirstPersonCamera->GetForwardVector() * InteractDistance;
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(PoolCueBallInteract), true);
-			Params.AddIgnoredActor(this);
-			FHitResult Hit;
-			const bool bHitSomething = GetWorld()->SweepSingleByChannel(
-				Hit,
-				Start,
-				End,
-				FQuat::Identity,
-				ECC_Visibility,
-				FCollisionShape::MakeSphere(FMath::Max(5.0f, Manager->GetBallRadius() * 0.55f)),
-				Params);
+			const FVector CueBallLocation = CueBall->GetActorLocation();
+			const FVector Segment = End - Start;
+			const float SegmentLengthSquared = Segment.SizeSquared();
+			if (SegmentLengthSquared <= KINDA_SMALL_NUMBER)
+			{
+				return nullptr;
+			}
 
-			if (bHitSomething && Hit.GetActor() == CueBall)
+			const float ProjectionAlpha = FMath::Clamp(
+				FVector::DotProduct(CueBallLocation - Start, Segment) / SegmentLengthSquared,
+				0.0f,
+				1.0f);
+			const FVector ClosestPoint = Start + Segment * ProjectionAlpha;
+			const float AimTolerance = FMath::Max(8.0f, Manager->GetBallRadius() * 1.35f);
+			if (FVector::DistSquared(ClosestPoint, CueBallLocation) <= FMath::Square(AimTolerance))
 			{
 				return CueBall;
 			}
@@ -453,15 +707,6 @@ APoolTableManager* AMyCharacter::GetPoolManager() const
 				return CachedPoolManager.Get();
 			}
 		}
-
-		if (HasAuthority())
-		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			SpawnParams.Name = TEXT("RuntimePoolTableManagerFallback");
-			CachedPoolManager = World->SpawnActor<APoolTableManager>(APoolTableManager::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
-			return CachedPoolManager.Get();
-		}
 	}
 
 	return nullptr;
@@ -482,37 +727,21 @@ void AMyCharacter::UpdateHUD()
 	}
 }
 
-void AMyCharacter::DrawTrajectoryPreview() const
-{
-	if (!bIsAimMode || !ActiveCueBall || !GetWorld())
-	{
-		return;
-	}
-
-	const FVector Start = ActiveCueBall->GetActorLocation();
-	const FVector Direction = GetAimDirection();
-	const FVector End = Start + Direction * 500.0f;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(PoolTrajectory), true);
-	Params.AddIgnoredActor(this);
-	Params.AddIgnoredActor(ActiveCueBall);
-
-	FHitResult Hit;
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
-	{
-		DrawDebugLine(GetWorld(), Start, Hit.ImpactPoint, FColor::Green, false, -1.0f, 0, 2.0f);
-		const FVector Reflected = Direction.MirrorByVector(Hit.ImpactNormal).GetSafeNormal();
-		DrawDebugLine(GetWorld(), Hit.ImpactPoint, Hit.ImpactPoint + Reflected * 180.0f, FColor::Yellow, false, -1.0f, 0, 2.0f);
-	}
-	else
-	{
-		DrawDebugLine(GetWorld(), Start, End, FColor::Green, false, -1.0f, 0, 2.0f);
-	}
-}
-
 FVector AMyCharacter::GetAimDirection() const
 {
 	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
 	return FVector::VectorPlaneProject(FRotator(0.0f, AimYawDegrees, 0.0f).Vector(), UpAxis).GetSafeNormal();
+}
+
+void AMyCharacter::UpdateSpinInput(float SideDelta, float TopDelta)
+{
+	if (!bIsAimMode)
+	{
+		return;
+	}
+
+	SpinInput.X = FMath::Clamp(SpinInput.X + SideDelta, -1.0f, 1.0f);
+	SpinInput.Y = FMath::Clamp(SpinInput.Y + TopDelta, -1.0f, 1.0f);
 }
 
 void AMyCharacter::UpdateNormalFacingToTable()

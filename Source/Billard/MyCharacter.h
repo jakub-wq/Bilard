@@ -22,6 +22,27 @@ public:
 	void PrepareForMenu();
 	void SetInGameHUDVisible(bool bVisible);
 
+	static FTransform CalculateCueVisualTransform(
+		const FVector& BallLocation,
+		const FVector& ShotDirection,
+		const FVector& UpAxis,
+		float CueDistanceFromBall,
+		float CuePullbackDistance,
+		float CurrentShotPower,
+		float MaxShotPower,
+		float CueSideOffset,
+		float CueHeightOffset,
+		const FRotator& CueAimRotationOffset,
+		bool bIsChargingShot);
+
+#if WITH_DEV_AUTOMATION_TESTS
+	UStaticMeshComponent* GetCueMeshForTests() const { return CueMesh; }
+	APoolBall* GetActiveCueBallForTests() const { return ActiveCueBall; }
+	bool IsCueBallPlacementModeForTests() const { return bIsCueBallPlacementMode; }
+	void EnterAimModeForTests(APoolBall* InCueBall) { EnterAimMode(InCueBall); }
+	void ExitAimModeForTests() { ExitAimMode(); }
+#endif
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -40,8 +61,12 @@ protected:
 	void ReleaseShot();
 	void EnterAimMode(APoolBall* InCueBall);
 	void ExitAimMode();
+	void EnterCueBallPlacementMode();
+	void ExitCueBallPlacementMode();
 	void UpdateCueVisual();
 	void UpdateAimMode(float DeltaTime);
+	void UpdateCueBallPlacementMode(float DeltaTime);
+	void SyncCueBallPlacementMode();
 	void AttachCueToPlayer();
 	void ShowMessage(const FString& Message) const;
 	bool TryEnterAimMode();
@@ -49,10 +74,11 @@ protected:
 	APoolTableManager* GetPoolManager() const;
 	void UpdateHUD();
 	void EnsureHUDWidget();
-	void DrawTrajectoryPreview() const;
 	void PositionAimCamera();
+	void PositionCueBallPlacementCamera();
 	void UpdateNormalFacingToTable();
 	FVector GetAimDirection() const;
+	void UpdateSpinInput(float SideDelta, float TopDelta);
 
 	UFUNCTION()
 	void HandleResetWidgetClicked();
@@ -67,19 +93,25 @@ protected:
 	UStaticMeshComponent* CueMesh;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
-	float ChargeRate = 900.0f;
+	float ChargeRate = 520.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
-	float MaxShotPower = 2600.0f;
+	float MaxShotPower = 1400.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
 	float InteractDistance = 260.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
-	float CueDistanceFromBall = 34.0f;
+	float CueDistanceFromBall = 4.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
 	float CuePullbackDistance = 22.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
+	float CueSideOffset = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
+	float CueHeightOffset = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
 	float AimOrbitDistance = 78.0f;
@@ -90,6 +122,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
 	float AimPitchDegrees = -8.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Placement")
+	float PlacementCameraHeight = 260.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Placement")
+	float PlacementMoveSpeed = 110.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
+	FRotator CueAimRotationOffset = FRotator(90.0f, 0.0f, -2.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
+	float DesiredCueLength = 128.0f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
 	float CurrentShotPower = 0.0f;
 
@@ -99,6 +143,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
 	bool bIsAimMode = false;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
+	FVector2D SpinInput = FVector2D::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
+	float SpinAdjustSpeed = 0.035f;
+
 	UPROPERTY()
 	APoolBall* ActiveCueBall = nullptr;
 
@@ -107,5 +157,9 @@ protected:
 
 	mutable TWeakObjectPtr<APoolTableManager> CachedPoolManager;
 	float AimYawDegrees = 0.0f;
+	FVector CueBallPlacementLocation = FVector::ZeroVector;
+	float PlacementForwardInput = 0.0f;
+	float PlacementRightInput = 0.0f;
+	bool bIsCueBallPlacementMode = false;
 	bool bShowHUDWidget = true;
 };

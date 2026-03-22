@@ -60,6 +60,19 @@ def create_empty(name: str, location: mathutils.Vector, collection: bpy.types.Co
     return empty
 
 
+def move_origin_to_local_z_end(obj: bpy.types.Object, use_max: bool = True) -> None:
+    if obj.type != "MESH" or not obj.data.vertices:
+        return
+
+    local_z_values = [vertex.co.z for vertex in obj.data.vertices]
+    target_z = max(local_z_values) if use_max else min(local_z_values)
+    local_offset = mathutils.Vector((0.0, 0.0, target_z))
+
+    # Keep the cue in the same world-space position while moving its pivot to one end.
+    obj.data.transform(mathutils.Matrix.Translation(-local_offset))
+    obj.matrix_world.translation = obj.matrix_world @ local_offset
+
+
 def felt_extents(table: bpy.types.Object) -> tuple[float, float, float]:
     mesh = table.data
     top_z = max((table.matrix_world @ vertex.co).z for vertex in mesh.vertices)
@@ -99,10 +112,12 @@ move_to_collection(table, tables)
 cue_a = bpy.data.objects["Cylindre.001"]
 cue_a.name = "CueStick_A"
 move_to_collection(cue_a, cues)
+move_origin_to_local_z_end(cue_a, use_max=True)
 
 cue_b = bpy.data.objects["Cylindre.002"]
 cue_b.name = "CueStick_B"
 move_to_collection(cue_b, cues)
+move_origin_to_local_z_end(cue_b, use_max=True)
 
 rack = bpy.data.objects["Plan"]
 rack.name = "RackTriangle"
