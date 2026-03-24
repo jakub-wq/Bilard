@@ -60,9 +60,9 @@ void APoolPlayerController::OpenMenu(bool bSaveState)
 		return;
 	}
 
-	if (AMyCharacter* Character = Cast<AMyCharacter>(GetPawn()))
+	if (AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn()))
 	{
-		Character->PrepareForMenu();
+		MyCharacter->PrepareForMenu();
 	}
 
 	if (APoolGameMode* GameMode = GetWorld() ? Cast<APoolGameMode>(GetWorld()->GetAuthGameMode()) : nullptr)
@@ -131,9 +131,9 @@ void APoolPlayerController::HandleToggleMenu()
 
 void APoolPlayerController::SetHUDVisible(bool bVisible) const
 {
-	if (AMyCharacter* Character = Cast<AMyCharacter>(GetPawn()))
+	if (AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn()))
 	{
-		Character->SetInGameHUDVisible(bVisible);
+		MyCharacter->SetInGameHUDVisible(bVisible);
 	}
 }
 
