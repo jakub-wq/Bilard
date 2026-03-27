@@ -29,7 +29,7 @@ public:
 	void PocketBall();
 	void BeginPocketSink(const FVector& SinkTargetLocation);
 	bool IsMoving() const;
-	void ApplyShotImpulse(const FVector& Direction, float Power, const FVector2D& SpinInput, const FVector& TableUpAxis);
+	void ApplyShotImpulse(const FVector& Direction, float Power, const FVector& TableUpAxis);
 	void SetBallRadius(float InRadius);
 	void SetMovementPlane(const FVector& InTableUpAxis, const FVector& InPlaneOrigin);
 	FVector GetLinearVelocity() const;
@@ -93,15 +93,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Billiards")
 	float MaxShotImpulse = 350.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Billiards|Spin")
-	float SideSpinForceScale = 14.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Billiards|Spin")
-	float TopSpinForceScale = 10.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Billiards|Spin")
-	float SpinDamping = 2.25f;
-
 	UPROPERTY(EditDefaultsOnly, Category = "Billiards|Collision")
 	float BallCollisionRestitution = 0.97f;
 
@@ -142,17 +133,13 @@ protected:
 	bool bUsingImportedVisual = false;
 
 	float BallRadiusCm = 5.7f;
-	FVector2D ActiveSpinInput = FVector2D::ZeroVector;
-	FVector ActiveSpinAxis = FVector::ZeroVector;
 	FVector TableUpVector = FVector::UpVector;
 	FVector MovementPlaneOrigin = FVector::ZeroVector;
 	FTransform InitialTransform;
 	FVector PocketSinkStart = FVector::ZeroVector;
 	FVector PocketSinkControlPoint = FVector::ZeroVector;
 	FVector PocketSinkTarget = FVector::ZeroVector;
-	FVector PocketSinkSpinAxis = FVector::ForwardVector;
 	float PocketSinkAlpha = 0.0f;
-	float PocketSinkSpinSpeedDegrees = 0.0f;
 	bool bHasMovementPlane = false;
 	TWeakObjectPtr<APoolBall> LastCollisionBall;
 	uint64 LastCollisionFrame = 0;

@@ -52,6 +52,8 @@ void APoolPlayerController::EnsureMenuWidget()
 	MenuWidget->OnQuitClicked.AddDynamic(this, &APoolPlayerController::HandleQuitClicked);
 	MenuWidget->OnCueSkinSelected.RemoveDynamic(this, &APoolPlayerController::HandleCueSkinSelected);
 	MenuWidget->OnCueSkinSelected.AddDynamic(this, &APoolPlayerController::HandleCueSkinSelected);
+	MenuWidget->OnModeSelected.RemoveDynamic(this, &APoolPlayerController::HandleModeSelected);
+	MenuWidget->OnModeSelected.AddDynamic(this, &APoolPlayerController::HandleModeSelected);
 }
 
 void APoolPlayerController::OpenMenu(bool bSaveState)
@@ -76,17 +78,22 @@ void APoolPlayerController::OpenMenu(bool bSaveState)
 		}
 		else if (GameMode->HasSavedGameState())
 		{
-			MenuWidget->SetSubtitleText(TEXT("Dostępny jest zapis rozgrywki. Kliknij Graj, aby ją wznowić."));
+			MenuWidget->SetSubtitleText(TEXT("Dostępny jest zapis rozgrywki. Wybierz tryb gry, aby ją wznowić."));
 		}
 		else
 		{
-			MenuWidget->SetSubtitleText(TEXT("Kliknij Graj, aby rozpocząć partię."));
+			MenuWidget->SetSubtitleText(TEXT("Wybierz tryb gry, aby rozpocząć rozgrywkę."));
 		}
 	}
 
 	if (AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn()))
 	{
 		MenuWidget->SetSelectedCueSkin(MyCharacter->GetSelectedCueSkin());
+	}
+
+	if (APoolGameMode* GameMode = GetWorld() ? Cast<APoolGameMode>(GetWorld()->GetAuthGameMode()) : nullptr)
+	{
+		MenuWidget->SetSelectedMatchMode(GameMode->GetMatchMode());
 	}
 
 	bMenuVisible = true;
@@ -112,7 +119,7 @@ void APoolPlayerController::CloseMenuAndResume()
 
 	if (APoolGameMode* GameMode = GetWorld() ? Cast<APoolGameMode>(GetWorld()->GetAuthGameMode()) : nullptr)
 	{
-		if (GameMode->HasSavedGameState())
+		if (bLoadSavedStateOnResume && GameMode->HasSavedGameState())
 		{
 			GameMode->LoadSavedState();
 		}
@@ -126,6 +133,7 @@ void APoolPlayerController::CloseMenuAndResume()
 
 	FInputModeGameOnly InputMode;
 	SetInputMode(InputMode);
+	bLoadSavedStateOnResume = true;
 }
 
 void APoolPlayerController::HandleToggleMenu()
@@ -166,4 +174,20 @@ void APoolPlayerController::HandleCueSkinSelected(ECueSkin SelectedSkin)
 	{
 		MyCharacter->SetCueSkin(SelectedSkin, true);
 	}
+}
+
+void APoolPlayerController::HandleModeSelected(EPoolMatchMode SelectedMode)
+{
+	if (APoolGameMode* GameMode = GetWorld() ? Cast<APoolGameMode>(GetWorld()->GetAuthGameMode()) : nullptr)
+	{
+		const EPoolMatchMode PreviousMode = GameMode->GetMatchMode();
+		bLoadSavedStateOnResume = PreviousMode == SelectedMode && GameMode->HasSavedGameState();
+		if (!bLoadSavedStateOnResume)
+		{
+			GameMode->ClearSavedGameState();
+		}
+		GameMode->SetMatchMode(SelectedMode);
+	}
+
+	CloseMenuAndResume();
 }

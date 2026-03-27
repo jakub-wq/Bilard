@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "PoolMatchTypes.h"
 #include "PoolTableManager.generated.h"
 
 class APoolBall;
@@ -10,6 +11,7 @@ class APoolCushionWall;
 class AStaticMeshActor;
 class UStaticMeshComponent;
 class UStaticMesh;
+class UPoolSaveGame;
 struct FPoolBallSaveState;
 
 UCLASS()
@@ -32,6 +34,15 @@ public:
 	bool ApplySavedBallStates(const TArray<FPoolBallSaveState>& SavedStates, int32 SavedPocketedBallCount);
 	int32 GetPocketedBallCount() const { return PocketedBallCount; }
 	const TArray<APoolBall*>& GetSpawnedBalls() const { return SpawnedBalls; }
+	void SetMatchMode(EPoolMatchMode NewMode);
+	EPoolMatchMode GetMatchMode() const { return MatchMode; }
+	bool IsMatchFinished() const { return bMatchFinished; }
+	void NotifyShotTaken(const FTransform& PlayerTransform, const FRotator& ControlRotation);
+	FString GetHUDTurnText() const;
+	FString GetHUDOpponentText() const;
+	FString GetHUDWinnerText() const;
+	void WriteMatchStateToSaveGame(UPoolSaveGame& SaveGame) const;
+	void LoadMatchStateFromSaveGame(const UPoolSaveGame& SaveGame);
 
 	FVector GetCueBallStartLocation() const { return CueBallStartLocation; }
 	FVector GetCueBallInHandLocation() const { return CueBallInHandLocation; }
@@ -78,6 +89,20 @@ protected:
 	bool IsCueBallScratchAlreadyHandled(const APoolBall* Ball) const;
 	bool RegisterObjectBallPocketed(APoolBall* Ball);
 	void StartBallPocketSink(APoolBall* Ball, const FVector& PocketLocation);
+	void ResolveLocalMatchTurn();
+	void ApplyCurrentPlayerView();
+	void ResetLocalMatchState();
+	void RecordLocalPocketedBall(APoolBall* Ball);
+	EPoolBallGroup GetBallGroupForBall(const APoolBall* Ball) const;
+	FString GetPlayerLabel(EPoolPlayerSide Player) const;
+	FString GetPlayerCameraLabel(EPoolPlayerSide Player) const;
+	EPoolPlayerSide GetOpponent(EPoolPlayerSide Player) const;
+	bool IsAnyBallAnimating() const;
+	int32 GetPocketedCountForPlayer(EPoolPlayerSide Player) const;
+	void SetPlayerPocketedCount(EPoolPlayerSide Player, int32 NewCount);
+	EPoolBallGroup GetAssignedGroup(EPoolPlayerSide Player) const;
+	void SetAssignedGroup(EPoolPlayerSide Player, EPoolBallGroup Group);
+	void FinishLocalMatch(EPoolPlayerSide WinningPlayer, const FString& Reason);
 	bool IsCueBallPlacementLocationValid(const FVector& DesiredLocation, const APoolBall* IgnoredBall = nullptr) const;
 	FVector FindCueBallPlacementLocation(const FVector& PreferredLocation) const;
 	bool TryResolveBallEscape(APoolBall* Ball, const FVector& RelativeToSurface, float AlongLong, float AlongShort);
@@ -285,4 +310,22 @@ protected:
 	TArray<FTransform> InitialBallTransforms;
 
 	int32 PocketedBallCount = 0;
+	EPoolMatchMode MatchMode = EPoolMatchMode::Training;
+	EPoolPlayerSide ActivePlayer = EPoolPlayerSide::Blue;
+	EPoolPlayerSide WinningPlayer = EPoolPlayerSide::Blue;
+	EPoolBallGroup BlueAssignedGroup = EPoolBallGroup::Unassigned;
+	EPoolBallGroup RedAssignedGroup = EPoolBallGroup::Unassigned;
+	int32 BluePocketedCount = 0;
+	int32 RedPocketedCount = 0;
+	bool bTurnResolutionPending = false;
+	bool bScratchCommittedThisTurn = false;
+	bool bBlackPocketedThisTurn = false;
+	bool bMatchFinished = false;
+	TArray<TWeakObjectPtr<APoolBall>> PocketedThisTurn;
+	FTransform BlueSavedTransform = FTransform::Identity;
+	FRotator BlueSavedControlRotation = FRotator::ZeroRotator;
+	bool bHasBlueSavedView = false;
+	FTransform RedSavedTransform = FTransform::Identity;
+	FRotator RedSavedControlRotation = FRotator::ZeroRotator;
+	bool bHasRedSavedView = false;
 };

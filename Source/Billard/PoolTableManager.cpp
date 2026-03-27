@@ -12,6 +12,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Math/RotationMatrix.h"
 #include "CollisionQueryParams.h"
+#include "MyCharacter.h"
 #include "PoolBall.h"
 #include "PoolCushionWall.h"
 #include "PoolPocketTrigger.h"
@@ -104,6 +105,16 @@ void APoolTableManager::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	HandleEscapedBalls();
 	UpdateCueBallRespawn(DeltaTime);
+
+	if (MatchMode == EPoolMatchMode::LocalVersus
+		&& bTurnResolutionPending
+		&& !bCueBallRespawnPending
+		&& !bCueBallInHand
+		&& AreBallsStopped()
+		&& !IsAnyBallAnimating())
+	{
+		ResolveLocalMatchTurn();
+	}
 
 	if (bDebugDrawRuntimeColliders)
 	{
@@ -312,6 +323,7 @@ void APoolTableManager::DestroySpawnedActors()
 	bCueBallInHand = false;
 	CueBallInHandLocation = FVector::ZeroVector;
 	PocketedBallCount = 0;
+	ResetLocalMatchState();
 }
 
 void APoolTableManager::HandleEscapedBalls()
@@ -1035,6 +1047,10 @@ void APoolTableManager::ResetRack()
 	SpawnWalls();
 	SpawnPockets();
 	SpawnBalls();
+	if (MatchMode == EPoolMatchMode::LocalVersus)
+	{
+		ApplyCurrentPlayerView();
+	}
 }
 
 void APoolTableManager::HandleBallPocketed(APoolBall* Ball, const FVector& PocketLocation)
@@ -1065,9 +1081,17 @@ void APoolTableManager::HandleBallPocketed(APoolBall* Ball, const FVector& Pocke
 			*PocketLocation.ToCompactString(),
 			*Ball->GetLinearVelocity().ToCompactString());
 		QueueCueBallRespawn(Ball, PocketLocation);
+		if (MatchMode == EPoolMatchMode::LocalVersus)
+		{
+			bScratchCommittedThisTurn = true;
+		}
 		return;
 	}
 
+	if (MatchMode == EPoolMatchMode::LocalVersus)
+	{
+		RecordLocalPocketedBall(Ball);
+	}
 	StartBallPocketSink(Ball, PocketLocation);
 }
 
@@ -1109,6 +1133,371 @@ void APoolTableManager::StartBallPocketSink(APoolBall* Ball, const FVector& Pock
 	if (!Ball->IsPocketed() && !Ball->IsSinkingIntoPocket())
 	{
 		Ball->BeginPocketSink(PocketLocation - TableUpAxis * (BallRadius * PocketSinkDepthMultiplier));
+	}
+}
+
+void APoolTableManager::SetMatchMode(EPoolMatchMode NewMode)
+{
+	if (MatchMode == NewMode)
+	{
+		return;
+	}
+
+	MatchMode = NewMode;
+	ResetRack();
+}
+
+void APoolTableManager::NotifyShotTaken(const FTransform& PlayerTransform, const FRotator& ControlRotation)
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || bMatchFinished)
+	{
+		return;
+	}
+
+	if (ActivePlayer == EPoolPlayerSide::Blue)
+	{
+		BlueSavedTransform = PlayerTransform;
+		BlueSavedControlRotation = ControlRotation;
+		bHasBlueSavedView = true;
+	}
+	else
+	{
+		RedSavedTransform = PlayerTransform;
+		RedSavedControlRotation = ControlRotation;
+		bHasRedSavedView = true;
+	}
+
+	PocketedThisTurn.Reset();
+	bScratchCommittedThisTurn = false;
+	bBlackPocketedThisTurn = false;
+	bTurnResolutionPending = true;
+}
+
+FString APoolTableManager::GetHUDTurnText() const
+{
+	if (MatchMode == EPoolMatchMode::Training)
+	{
+		return TEXT("Tryb treningowy");
+	}
+
+	if (bMatchFinished)
+	{
+		return FString::Printf(TEXT("Koniec gry - wygrał gracz %s"), *GetPlayerLabel(WinningPlayer));
+	}
+
+	const EPoolBallGroup AssignedGroup = GetAssignedGroup(ActivePlayer);
+	if (AssignedGroup == EPoolBallGroup::Yellow)
+	{
+		return FString::Printf(TEXT("Tura: Gracz %s (żółte)"), *GetPlayerLabel(ActivePlayer));
+	}
+
+	if (AssignedGroup == EPoolBallGroup::Red)
+	{
+		return FString::Printf(TEXT("Tura: Gracz %s (czerwone)"), *GetPlayerLabel(ActivePlayer));
+	}
+
+	return FString::Printf(TEXT("Tura: Gracz %s"), *GetPlayerLabel(ActivePlayer));
+}
+
+FString APoolTableManager::GetHUDOpponentText() const
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || bMatchFinished)
+	{
+		return TEXT("");
+	}
+
+	return GetPlayerCameraLabel(GetOpponent(ActivePlayer));
+}
+
+FString APoolTableManager::GetHUDWinnerText() const
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || !bMatchFinished)
+	{
+		return TEXT("");
+	}
+
+	return FString::Printf(TEXT("Wygrał gracz %s. Rozgrywka zakończona."), *GetPlayerLabel(WinningPlayer));
+}
+
+void APoolTableManager::WriteMatchStateToSaveGame(UPoolSaveGame& SaveGame) const
+{
+	SaveGame.MatchMode = MatchMode;
+	SaveGame.ActivePlayer = ActivePlayer;
+	SaveGame.Winner = WinningPlayer;
+	SaveGame.BlueAssignedGroup = BlueAssignedGroup;
+	SaveGame.RedAssignedGroup = RedAssignedGroup;
+	SaveGame.BluePocketedCount = BluePocketedCount;
+	SaveGame.RedPocketedCount = RedPocketedCount;
+	SaveGame.bMatchFinished = bMatchFinished;
+	SaveGame.BluePlayerTransform = BlueSavedTransform;
+	SaveGame.BlueControlRotation = BlueSavedControlRotation;
+	SaveGame.bHasBluePlayerState = bHasBlueSavedView;
+	SaveGame.RedPlayerTransform = RedSavedTransform;
+	SaveGame.RedControlRotation = RedSavedControlRotation;
+	SaveGame.bHasRedPlayerState = bHasRedSavedView;
+}
+
+void APoolTableManager::LoadMatchStateFromSaveGame(const UPoolSaveGame& SaveGame)
+{
+	MatchMode = SaveGame.MatchMode;
+	ActivePlayer = SaveGame.ActivePlayer;
+	WinningPlayer = SaveGame.Winner;
+	BlueAssignedGroup = SaveGame.BlueAssignedGroup;
+	RedAssignedGroup = SaveGame.RedAssignedGroup;
+	BluePocketedCount = SaveGame.BluePocketedCount;
+	RedPocketedCount = SaveGame.RedPocketedCount;
+	bMatchFinished = SaveGame.bMatchFinished;
+	BlueSavedTransform = SaveGame.BluePlayerTransform;
+	BlueSavedControlRotation = SaveGame.BlueControlRotation;
+	bHasBlueSavedView = SaveGame.bHasBluePlayerState;
+	RedSavedTransform = SaveGame.RedPlayerTransform;
+	RedSavedControlRotation = SaveGame.RedControlRotation;
+	bHasRedSavedView = SaveGame.bHasRedPlayerState;
+	bTurnResolutionPending = false;
+	bScratchCommittedThisTurn = false;
+	bBlackPocketedThisTurn = false;
+	PocketedThisTurn.Reset();
+}
+
+void APoolTableManager::ResolveLocalMatchTurn()
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || bMatchFinished)
+	{
+		bTurnResolutionPending = false;
+		return;
+	}
+
+	const EPoolPlayerSide Shooter = ActivePlayer;
+	const EPoolPlayerSide Opponent = GetOpponent(Shooter);
+	bool bSwitchTurn = bScratchCommittedThisTurn;
+	bool bShooterPocketedOwnGroup = false;
+	bool bAssignedThisShot = false;
+
+	for (const TWeakObjectPtr<APoolBall>& BallPtr : PocketedThisTurn)
+	{
+		APoolBall* Ball = BallPtr.Get();
+		if (!IsValid(Ball))
+		{
+			continue;
+		}
+
+		const EPoolBallGroup Group = GetBallGroupForBall(Ball);
+		if (Group == EPoolBallGroup::Black)
+		{
+			FinishLocalMatch(Opponent, FString::Printf(TEXT("Gracz %s wbił czarną bilę."), *GetPlayerLabel(Shooter)));
+			bTurnResolutionPending = false;
+			return;
+		}
+
+		EPoolBallGroup ShooterGroup = GetAssignedGroup(Shooter);
+		if (ShooterGroup == EPoolBallGroup::Unassigned)
+		{
+			SetAssignedGroup(Shooter, Group);
+			SetAssignedGroup(Opponent, Group == EPoolBallGroup::Yellow ? EPoolBallGroup::Red : EPoolBallGroup::Yellow);
+			ShooterGroup = Group;
+			bAssignedThisShot = true;
+		}
+
+		if (Group == ShooterGroup)
+		{
+			SetPlayerPocketedCount(Shooter, GetPocketedCountForPlayer(Shooter) + 1);
+			bShooterPocketedOwnGroup = true;
+		}
+		else
+		{
+			SetPlayerPocketedCount(Opponent, GetPocketedCountForPlayer(Opponent) + 1);
+			bSwitchTurn = true;
+		}
+	}
+
+	if (GetPocketedCountForPlayer(Shooter) >= 7)
+	{
+		FinishLocalMatch(Shooter, FString::Printf(TEXT("Gracz %s wbił wszystkie swoje bile."), *GetPlayerLabel(Shooter)));
+		bTurnResolutionPending = false;
+		return;
+	}
+
+	if (GetPocketedCountForPlayer(Opponent) >= 7)
+	{
+		FinishLocalMatch(Opponent, FString::Printf(TEXT("Gracz %s wbił wszystkie swoje bile."), *GetPlayerLabel(Opponent)));
+		bTurnResolutionPending = false;
+		return;
+	}
+
+	if (!bShooterPocketedOwnGroup || bSwitchTurn || (!bAssignedThisShot && PocketedThisTurn.Num() == 0))
+	{
+		ActivePlayer = Opponent;
+	}
+
+	PocketedThisTurn.Reset();
+	bScratchCommittedThisTurn = false;
+	bBlackPocketedThisTurn = false;
+	bTurnResolutionPending = false;
+	ApplyCurrentPlayerView();
+}
+
+void APoolTableManager::ApplyCurrentPlayerView()
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || bMatchFinished)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	AMyCharacter* MyCharacter = PlayerController ? Cast<AMyCharacter>(PlayerController->GetPawn()) : nullptr;
+	if (!MyCharacter)
+	{
+		return;
+	}
+
+	bool bHasSavedView = false;
+	FTransform DesiredTransform = FTransform::Identity;
+	FRotator DesiredRotation = FRotator::ZeroRotator;
+
+	if (ActivePlayer == EPoolPlayerSide::Blue && bHasBlueSavedView)
+	{
+		bHasSavedView = true;
+		DesiredTransform = BlueSavedTransform;
+		DesiredRotation = BlueSavedControlRotation;
+	}
+	else if (ActivePlayer == EPoolPlayerSide::Red && bHasRedSavedView)
+	{
+		bHasSavedView = true;
+		DesiredTransform = RedSavedTransform;
+		DesiredRotation = RedSavedControlRotation;
+	}
+
+	if (!bHasSavedView)
+	{
+		const FVector AimLocation = GetCueBallStartLocation() - GetTableLongAxis() * 190.0f;
+		const FVector Desired = GetCueBallStartLocation() - AimLocation;
+		DesiredTransform = FTransform(FRotator(0.0f, Desired.Rotation().Yaw, 0.0f), FVector(AimLocation.X, AimLocation.Y, MyCharacter->GetActorLocation().Z));
+		DesiredRotation = Desired.Rotation();
+	}
+
+	MyCharacter->ApplyExternalView(DesiredTransform, DesiredRotation);
+}
+
+void APoolTableManager::ResetLocalMatchState()
+{
+	ActivePlayer = EPoolPlayerSide::Blue;
+	WinningPlayer = EPoolPlayerSide::Blue;
+	BlueAssignedGroup = EPoolBallGroup::Unassigned;
+	RedAssignedGroup = EPoolBallGroup::Unassigned;
+	BluePocketedCount = 0;
+	RedPocketedCount = 0;
+	bTurnResolutionPending = false;
+	bScratchCommittedThisTurn = false;
+	bBlackPocketedThisTurn = false;
+	bMatchFinished = false;
+	PocketedThisTurn.Reset();
+	BlueSavedTransform = FTransform::Identity;
+	BlueSavedControlRotation = FRotator::ZeroRotator;
+	bHasBlueSavedView = false;
+	RedSavedTransform = FTransform::Identity;
+	RedSavedControlRotation = FRotator::ZeroRotator;
+	bHasRedSavedView = false;
+}
+
+void APoolTableManager::RecordLocalPocketedBall(APoolBall* Ball)
+{
+	if (!IsValid(Ball) || Ball->IsCueBall())
+	{
+		return;
+	}
+
+	PocketedThisTurn.Add(Ball);
+	if (GetBallGroupForBall(Ball) == EPoolBallGroup::Black)
+	{
+		bBlackPocketedThisTurn = true;
+	}
+}
+
+EPoolBallGroup APoolTableManager::GetBallGroupForBall(const APoolBall* Ball) const
+{
+	if (!IsValid(Ball) || Ball->IsCueBall())
+	{
+		return EPoolBallGroup::Unassigned;
+	}
+
+	if (Ball->GetBallNumber() == 8)
+	{
+		return EPoolBallGroup::Black;
+	}
+
+	return Ball->GetBallNumber() <= 7 ? EPoolBallGroup::Yellow : EPoolBallGroup::Red;
+}
+
+FString APoolTableManager::GetPlayerLabel(EPoolPlayerSide Player) const
+{
+	return Player == EPoolPlayerSide::Blue ? TEXT("Niebieski") : TEXT("Czerwony");
+}
+
+FString APoolTableManager::GetPlayerCameraLabel(EPoolPlayerSide Player) const
+{
+	return FString::Printf(TEXT("Przeciwnik %s"), *GetPlayerLabel(Player));
+}
+
+EPoolPlayerSide APoolTableManager::GetOpponent(EPoolPlayerSide Player) const
+{
+	return Player == EPoolPlayerSide::Blue ? EPoolPlayerSide::Red : EPoolPlayerSide::Blue;
+}
+
+bool APoolTableManager::IsAnyBallAnimating() const
+{
+	for (const APoolBall* Ball : SpawnedBalls)
+	{
+		if (IsValid(Ball) && Ball->IsSinkingIntoPocket())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int32 APoolTableManager::GetPocketedCountForPlayer(EPoolPlayerSide Player) const
+{
+	return Player == EPoolPlayerSide::Blue ? BluePocketedCount : RedPocketedCount;
+}
+
+void APoolTableManager::SetPlayerPocketedCount(EPoolPlayerSide Player, int32 NewCount)
+{
+	if (Player == EPoolPlayerSide::Blue)
+	{
+		BluePocketedCount = FMath::Clamp(NewCount, 0, 7);
+	}
+	else
+	{
+		RedPocketedCount = FMath::Clamp(NewCount, 0, 7);
+	}
+}
+
+EPoolBallGroup APoolTableManager::GetAssignedGroup(EPoolPlayerSide Player) const
+{
+	return Player == EPoolPlayerSide::Blue ? BlueAssignedGroup : RedAssignedGroup;
+}
+
+void APoolTableManager::SetAssignedGroup(EPoolPlayerSide Player, EPoolBallGroup Group)
+{
+	if (Player == EPoolPlayerSide::Blue)
+	{
+		BlueAssignedGroup = Group;
+	}
+	else
+	{
+		RedAssignedGroup = Group;
+	}
+}
+
+void APoolTableManager::FinishLocalMatch(EPoolPlayerSide WinningSide, const FString& Reason)
+{
+	bMatchFinished = true;
+	WinningPlayer = WinningSide;
+	bTurnResolutionPending = false;
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, Reason);
 	}
 }
 

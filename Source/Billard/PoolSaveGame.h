@@ -3,6 +3,7 @@
 #include "CueSkin.h"
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "PoolMatchTypes.h"
 #include "PoolSaveGame.generated.h"
 
 USTRUCT()
@@ -46,4 +47,46 @@ public:
 
 	UPROPERTY()
 	ECueSkin SelectedCueSkin = ECueSkin::Standard;
+
+	UPROPERTY()
+	EPoolMatchMode MatchMode = EPoolMatchMode::Training;
+
+	UPROPERTY()
+	EPoolPlayerSide ActivePlayer = EPoolPlayerSide::Blue;
+
+	UPROPERTY()
+	EPoolPlayerSide Winner = EPoolPlayerSide::Blue;
+
+	UPROPERTY()
+	EPoolBallGroup BlueAssignedGroup = EPoolBallGroup::Unassigned;
+
+	UPROPERTY()
+	EPoolBallGroup RedAssignedGroup = EPoolBallGroup::Unassigned;
+
+	UPROPERTY()
+	int32 BluePocketedCount = 0;
+
+	UPROPERTY()
+	int32 RedPocketedCount = 0;
+
+	UPROPERTY()
+	bool bMatchFinished = false;
+
+	UPROPERTY()
+	FTransform BluePlayerTransform = FTransform::Identity;
+
+	UPROPERTY()
+	FRotator BlueControlRotation = FRotator::ZeroRotator;
+
+	UPROPERTY()
+	bool bHasBluePlayerState = false;
+
+	UPROPERTY()
+	FTransform RedPlayerTransform = FTransform::Identity;
+
+	UPROPERTY()
+	FRotator RedControlRotation = FRotator::ZeroRotator;
+
+	UPROPERTY()
+	bool bHasRedPlayerState = false;
 };

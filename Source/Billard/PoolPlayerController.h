@@ -3,6 +3,7 @@
 #include "CueSkin.h"
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "PoolMatchTypes.h"
 #include "PoolPlayerController.generated.h"
 
 class UPoolMenuWidget;
@@ -33,8 +34,12 @@ protected:
 	UFUNCTION()
 	void HandleCueSkinSelected(ECueSkin SelectedSkin);
 
+	UFUNCTION()
+	void HandleModeSelected(EPoolMatchMode SelectedMode);
+
 	UPROPERTY()
 	UPoolMenuWidget* MenuWidget = nullptr;
 
 	bool bMenuVisible = false;
+	bool bLoadSavedStateOnResume = true;
 };

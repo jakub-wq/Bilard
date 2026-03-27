@@ -34,6 +34,20 @@ void APoolGameMode::StartPlay()
 	}
 }
 
+void APoolGameMode::SetMatchMode(EPoolMatchMode NewMode)
+{
+	ResolvePoolManager();
+	if (PoolManager)
+	{
+		PoolManager->SetMatchMode(NewMode);
+	}
+}
+
+EPoolMatchMode APoolGameMode::GetMatchMode() const
+{
+	return PoolManager ? PoolManager->GetMatchMode() : EPoolMatchMode::Training;
+}
+
 void APoolGameMode::ResolvePoolManager()
 {
 	if (!PoolManager)
@@ -87,6 +101,7 @@ bool APoolGameMode::SaveCurrentState()
 	}
 
 	SaveGame->PocketedBallCount = PoolManager->GetPocketedBallCount();
+	PoolManager->WriteMatchStateToSaveGame(*SaveGame);
 
 	if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0))
 	{
@@ -121,6 +136,7 @@ bool APoolGameMode::LoadSavedState()
 	}
 
 	PoolManager->ResetRack();
+	PoolManager->LoadMatchStateFromSaveGame(*SaveGame);
 	if (!PoolManager->ApplySavedBallStates(SaveGame->BallStates, SaveGame->PocketedBallCount))
 	{
 		ClearSavedGameState();

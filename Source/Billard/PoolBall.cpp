@@ -191,19 +191,7 @@ void APoolBall::Tick(float DeltaTime)
 	{
 		CollisionSphere->SetPhysicsLinearVelocity(FVector::ZeroVector);
 		CollisionSphere->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-		ActiveSpinInput = FVector2D::ZeroVector;
-		ActiveSpinAxis = FVector::ZeroVector;
 		return;
-	}
-
-	if (!ActiveSpinInput.IsNearlyZero() && !LinearVelocity.IsNearlyZero())
-	{
-		const FVector ShotDirection = LinearVelocity.GetSafeNormal();
-		const FVector SideAxis = FVector::CrossProduct(TableUpVector, ShotDirection).GetSafeNormal();
-		const FVector SideForce = SideAxis * (ActiveSpinInput.X * SideSpinForceScale * LinearVelocity.Size());
-		const FVector FollowDrawForce = ShotDirection * (ActiveSpinInput.Y * TopSpinForceScale * LinearVelocity.Size());
-		CollisionSphere->AddForce(SideForce + FollowDrawForce);
-		ActiveSpinInput = FMath::Vector2DInterpTo(ActiveSpinInput, FVector2D::ZeroVector, DeltaTime, SpinDamping);
 	}
 }
 
@@ -351,16 +339,6 @@ void APoolBall::BeginPocketSink(const FVector& SinkTargetLocation)
 	PocketSinkTarget = SinkTargetLocation;
 	const FVector PlanarToTarget = FVector::VectorPlaneProject(PocketSinkTarget - PocketSinkStart, TableUpVector);
 	PocketSinkControlPoint = PocketSinkStart + PlanarToTarget * 0.42f - TableUpVector * (BallRadiusCm * 0.18f);
-	PocketSinkSpinAxis = CollisionSphere->GetPhysicsAngularVelocityInDegrees().GetSafeNormal();
-	if (PocketSinkSpinAxis.IsNearlyZero())
-	{
-		PocketSinkSpinAxis = FVector::CrossProduct(TableUpVector, PlanarToTarget.GetSafeNormal()).GetSafeNormal();
-		if (PocketSinkSpinAxis.IsNearlyZero())
-		{
-			PocketSinkSpinAxis = FVector::ForwardVector;
-		}
-	}
-	PocketSinkSpinSpeedDegrees = FMath::Max(420.0f, CollisionSphere->GetPhysicsAngularVelocityInDegrees().Size());
 	CollisionSphere->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	CollisionSphere->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	CollisionSphere->SetSimulatePhysics(false);
@@ -378,8 +356,6 @@ void APoolBall::UpdatePocketSink(float DeltaTime)
 		+ (T * T * PocketSinkTarget);
 
 	SetActorLocation(SinkLocation, false, nullptr, ETeleportType::TeleportPhysics);
-	const float SpinStep = PocketSinkSpinSpeedDegrees * DeltaTime * FMath::Lerp(1.0f, 0.45f, T);
-	AddActorWorldRotation(FQuat(PocketSinkSpinAxis, FMath::DegreesToRadians(SpinStep)));
 
 	if (PocketSinkAlpha >= 1.0f)
 	{
@@ -394,8 +370,6 @@ void APoolBall::ResetBall(const FTransform& NewTransform)
 	bPocketed = false;
 	bSinkingIntoPocket = false;
 	PocketSinkAlpha = 0.0f;
-	ActiveSpinInput = FVector2D::ZeroVector;
-	ActiveSpinAxis = FVector::ZeroVector;
 	SetActorHiddenInGame(false);
 	SetActorEnableCollision(true);
 	BallMesh->SetVisibility(true, true);
@@ -421,8 +395,6 @@ void APoolBall::PocketBall()
 
 	bPocketed = true;
 	bSinkingIntoPocket = false;
-	ActiveSpinInput = FVector2D::ZeroVector;
-	ActiveSpinAxis = FVector::ZeroVector;
 	CollisionSphere->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	CollisionSphere->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	CollisionSphere->SetSimulatePhysics(false);
@@ -442,7 +414,7 @@ bool APoolBall::IsMoving() const
 		|| CollisionSphere->GetPhysicsAngularVelocityInDegrees().SizeSquared() > FMath::Square(12.0f);
 }
 
-void APoolBall::ApplyShotImpulse(const FVector& Direction, float Power, const FVector2D& SpinInput, const FVector& TableUpAxis)
+void APoolBall::ApplyShotImpulse(const FVector& Direction, float Power, const FVector& TableUpAxis)
 {
 	if (!CollisionSphere || bPocketed)
 	{
@@ -451,23 +423,12 @@ void APoolBall::ApplyShotImpulse(const FVector& Direction, float Power, const FV
 
 	const FVector ShotDirection = Direction.GetSafeNormal();
 	const FVector UpAxis = TableUpAxis.GetSafeNormal().IsNearlyZero() ? FVector::UpVector : TableUpAxis.GetSafeNormal();
-	const FVector SideAxis = FVector::CrossProduct(UpAxis, ShotDirection).GetSafeNormal();
 	const float ShotImpulse = CalculateShotImpulseMagnitude(Power, ShotImpulseScale, MinShotImpulse, MaxShotImpulse);
 
 	TableUpVector = UpAxis;
-	ActiveSpinInput = FVector2D(
-		FMath::Clamp(SpinInput.X, -1.0f, 1.0f),
-		FMath::Clamp(SpinInput.Y, -1.0f, 1.0f));
-	ActiveSpinAxis = (SideAxis * ActiveSpinInput.Y + UpAxis * ActiveSpinInput.X).GetSafeNormal();
 
 	CollisionSphere->WakeRigidBody();
 	CollisionSphere->AddImpulse(ShotDirection * ShotImpulse, NAME_None, true);
-
-	if (!ActiveSpinInput.IsNearlyZero())
-	{
-		const FVector AngularImpulse = (SideAxis * ActiveSpinInput.Y + UpAxis * ActiveSpinInput.X) * (ShotImpulse * 0.11f);
-		CollisionSphere->AddAngularImpulseInDegrees(AngularImpulse, NAME_None, true);
-	}
 }
 
 void APoolBall::HandleCollision(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -539,6 +500,4 @@ void APoolBall::ApplyBallCollisionResponse(APoolBall* OtherBall)
 	LastCollisionFrame = GFrameCounter;
 	OtherBall->LastCollisionBall = this;
 	OtherBall->LastCollisionFrame = GFrameCounter;
-	ActiveSpinInput *= 0.55f;
-	OtherBall->ActiveSpinInput *= 0.2f;
 }

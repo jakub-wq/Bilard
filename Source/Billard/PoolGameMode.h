@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "PoolMatchTypes.h"
 #include "PoolGameMode.generated.h"
 
 class APoolTableManager;
@@ -16,6 +17,8 @@ public:
 	virtual void StartPlay() override;
 
 	APoolTableManager* GetPoolManager() const { return PoolManager; }
+	void SetMatchMode(EPoolMatchMode NewMode);
+	EPoolMatchMode GetMatchMode() const;
 	bool SaveCurrentState();
 	bool LoadSavedState();
 	bool HasSavedGameState() const;

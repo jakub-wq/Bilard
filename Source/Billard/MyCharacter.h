@@ -24,6 +24,7 @@ public:
 	void SetInGameHUDVisible(bool bVisible);
 	void SetCueSkin(ECueSkin NewSkin, bool bSavePreference = true);
 	ECueSkin GetSelectedCueSkin() const { return SelectedCueSkin; }
+	void ApplyExternalView(const FTransform& PlayerTransform, const FRotator& ControlRotation);
 
 	static FTransform CalculateCueVisualTransform(
 		const FVector& BallLocation,
@@ -82,7 +83,6 @@ protected:
 	void PositionCueBallPlacementCamera();
 	void UpdateNormalFacingToTable();
 	FVector GetAimDirection() const;
-	void UpdateSpinInput(float SideDelta, float TopDelta);
 	void ApplyCueSkin(ECueSkin NewSkin);
 	void LoadCueSkinPreference();
 	void SaveCueSkinPreference() const;
@@ -149,12 +149,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
 	bool bIsAimMode = false;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
-	FVector2D SpinInput = FVector2D::ZeroVector;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
-	float SpinAdjustSpeed = 0.035f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
 	ECueSkin SelectedCueSkin = ECueSkin::Standard;

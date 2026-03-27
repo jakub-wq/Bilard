@@ -228,12 +228,6 @@ void AMyCharacter::MoveForward(float Value)
 		return;
 	}
 
-	if (bIsAimMode)
-	{
-		UpdateSpinInput(0.0f, Value * SpinAdjustSpeed);
-		return;
-	}
-
 	if (Controller && !FMath::IsNearlyZero(Value) && !bIsAimMode)
 	{
 		AddMovementInput(GetActorForwardVector(), Value);
@@ -245,12 +239,6 @@ void AMyCharacter::MoveRight(float Value)
 	if (bIsCueBallPlacementMode)
 	{
 		PlacementRightInput = Value;
-		return;
-	}
-
-	if (bIsAimMode)
-	{
-		UpdateSpinInput(Value * SpinAdjustSpeed, 0.0f);
 		return;
 	}
 
@@ -282,12 +270,6 @@ void AMyCharacter::LookUpAtRate(float Value)
 		return;
 	}
 
-	if (bIsAimMode)
-	{
-		UpdateSpinInput(0.0f, Value * SpinAdjustSpeed);
-		return;
-	}
-
 	if (!bIsAimMode)
 	{
 		AddControllerPitchInput(Value);
@@ -297,6 +279,15 @@ void AMyCharacter::LookUpAtRate(float Value)
 void AMyCharacter::PrimaryActionPressed()
 {
 	SyncCueBallPlacementMode();
+
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		if (Manager->IsMatchFinished())
+		{
+			ShowMessage(TEXT("Rozgrywka została zakończona. Zresetuj bile albo wybierz nowy tryb gry."));
+			return;
+		}
+	}
 
 	if (bIsCueBallPlacementMode)
 	{
@@ -361,9 +352,12 @@ void AMyCharacter::ReleaseShot()
 	bIsChargingShot = false;
 	const FVector ShotDirection = GetAimDirection();
 	const FVector TableUpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
-	ActiveCueBall->ApplyShotImpulse(ShotDirection, FMath::Max(CurrentShotPower, 240.0f), SpinInput, TableUpAxis);
+	if (APoolTableManager* Manager = GetPoolManager())
+	{
+		Manager->NotifyShotTaken(GetActorTransform(), GetControlRotation());
+	}
+	ActiveCueBall->ApplyShotImpulse(ShotDirection, FMath::Max(CurrentShotPower, 240.0f), TableUpAxis);
 	CurrentShotPower = 0.0f;
-	SpinInput = FVector2D::ZeroVector;
 	ExitAimMode();
 }
 
@@ -377,7 +371,6 @@ void AMyCharacter::CancelShot()
 
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
-	SpinInput = FVector2D::ZeroVector;
 	if (bIsAimMode)
 	{
 		ExitAimMode();
@@ -391,7 +384,10 @@ void AMyCharacter::ResetBalls()
 		Manager->ResetRack();
 		ExitAimMode();
 		ExitCueBallPlacementMode();
-		UpdateNormalFacingToTable();
+		if (Manager->GetMatchMode() == EPoolMatchMode::Training)
+		{
+			UpdateNormalFacingToTable();
+		}
 		ShowMessage(TEXT("Układ bil został zresetowany."));
 	}
 }
@@ -424,7 +420,6 @@ void AMyCharacter::EnterAimMode(APoolBall* InCueBall)
 	bIsAimMode = true;
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
-	SpinInput = FVector2D::ZeroVector;
 	GetCharacterMovement()->StopMovementImmediately();
 
 	if (APoolTableManager* Manager = GetPoolManager())
@@ -440,7 +435,7 @@ void AMyCharacter::EnterAimMode(APoolBall* InCueBall)
 	FirstPersonCamera->SetActive(false);
 	AimCamera->SetActive(true);
 	PositionAimCamera();
-	ShowMessage(TEXT("Tryb uderzenia: LPM ładuje strzał, PPM anuluje, A/D nadaje boczną rotację, W/S lub ruch myszy góra/dół dodaje górną/dolną rotację."));
+	ShowMessage(TEXT("Tryb uderzenia: LPM ładuje strzał, PPM anuluje."));
 }
 
 void AMyCharacter::ExitAimMode()
@@ -448,7 +443,6 @@ void AMyCharacter::ExitAimMode()
 	bIsAimMode = false;
 	bIsChargingShot = false;
 	CurrentShotPower = 0.0f;
-	SpinInput = FVector2D::ZeroVector;
 	ActiveCueBall = nullptr;
 	AimCamera->SetActive(false);
 	FirstPersonCamera->SetActive(true);
@@ -681,6 +675,16 @@ void AMyCharacter::SetCueSkin(ECueSkin NewSkin, bool bSavePreference)
 	}
 }
 
+void AMyCharacter::ApplyExternalView(const FTransform& PlayerTransform, const FRotator& ControlRotation)
+{
+	SetActorTransform(PlayerTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	if (Controller)
+	{
+		Controller->SetControlRotation(ControlRotation);
+	}
+	SetActorRotation(FRotator(0.0f, ControlRotation.Yaw, 0.0f));
+}
+
 void AMyCharacter::ShowMessage(const FString& Message) const
 {
 	if (HUDWidget)
@@ -780,6 +784,9 @@ void AMyCharacter::UpdateHUD()
 	if (APoolTableManager* Manager = GetPoolManager())
 	{
 		HUDWidget->SetPocketedCount(Manager->GetPocketedBallCount());
+		HUDWidget->SetTurnText(Manager->GetHUDTurnText());
+		HUDWidget->SetOpponentText(Manager->GetHUDOpponentText());
+		HUDWidget->SetWinnerText(Manager->GetHUDWinnerText());
 	}
 }
 
@@ -787,17 +794,6 @@ FVector AMyCharacter::GetAimDirection() const
 {
 	const FVector UpAxis = GetPoolManager() ? GetPoolManager()->GetTableUpAxis() : FVector::UpVector;
 	return FVector::VectorPlaneProject(FRotator(0.0f, AimYawDegrees, 0.0f).Vector(), UpAxis).GetSafeNormal();
-}
-
-void AMyCharacter::UpdateSpinInput(float SideDelta, float TopDelta)
-{
-	if (!bIsAimMode)
-	{
-		return;
-	}
-
-	SpinInput.X = FMath::Clamp(SpinInput.X + SideDelta, -1.0f, 1.0f);
-	SpinInput.Y = FMath::Clamp(SpinInput.Y + TopDelta, -1.0f, 1.0f);
 }
 
 void AMyCharacter::ApplyCueSkin(ECueSkin NewSkin)

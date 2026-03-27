@@ -22,6 +22,9 @@ public:
 	void SetAimMode(bool bInAimMode);
 	void SetHintText(const FString& InText);
 	void SetPocketedCount(int32 InCount);
+	void SetTurnText(const FString& InText);
+	void SetOpponentText(const FString& InText);
+	void SetWinnerText(const FString& InText);
 
 	UPROPERTY(BlueprintAssignable, Category = "Billiards")
 	FPoolResetClicked OnResetClicked;
@@ -46,6 +49,15 @@ protected:
 
 	UPROPERTY()
 	UTextBlock* PocketedCountText = nullptr;
+
+	UPROPERTY()
+	UTextBlock* TurnText = nullptr;
+
+	UPROPERTY()
+	UTextBlock* OpponentText = nullptr;
+
+	UPROPERTY()
+	UTextBlock* WinnerText = nullptr;
 
 	UPROPERTY()
 	UProgressBar* PowerBar = nullptr;

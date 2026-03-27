@@ -34,6 +34,9 @@ void UPoolHUDWidget::BuildWidgetTree()
 	CrosshairText = nullptr;
 	HintText = nullptr;
 	PocketedCountText = nullptr;
+	TurnText = nullptr;
+	OpponentText = nullptr;
+	WinnerText = nullptr;
 	PowerBar = nullptr;
 
 	if (!WidgetTree)
@@ -87,6 +90,32 @@ void UPoolHUDWidget::BuildWidgetTree()
 		PanelSlot->SetPosition(FVector2D(0.0f, 20.0f));
 	}
 
+	TurnText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TurnText"));
+	TurnText->SetText(FText::FromString(TEXT("Tryb treningowy")));
+	TurnText->SetJustification(ETextJustify::Center);
+	TurnText->SetColorAndOpacity(FSlateColor(FLinearColor(0.92f, 0.97f, 0.94f)));
+	RootCanvas->AddChild(TurnText);
+	if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(TurnText->Slot))
+	{
+		PanelSlot->SetAutoSize(true);
+		PanelSlot->SetAnchors(FAnchors(0.5f, 0.0f));
+		PanelSlot->SetAlignment(FVector2D(0.5f, 0.0f));
+		PanelSlot->SetPosition(FVector2D(0.0f, 54.0f));
+	}
+
+	OpponentText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("OpponentText"));
+	OpponentText->SetText(FText::FromString(TEXT("")));
+	OpponentText->SetJustification(ETextJustify::Left);
+	OpponentText->SetColorAndOpacity(FSlateColor(FLinearColor(0.84f, 0.86f, 0.90f)));
+	RootCanvas->AddChild(OpponentText);
+	if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(OpponentText->Slot))
+	{
+		PanelSlot->SetAutoSize(true);
+		PanelSlot->SetAnchors(FAnchors(0.0f, 0.0f));
+		PanelSlot->SetAlignment(FVector2D(0.0f, 0.0f));
+		PanelSlot->SetPosition(FVector2D(20.0f, 20.0f));
+	}
+
 	PocketedCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PocketedCountText"));
 	PocketedCountText->SetText(FText::FromString(TEXT("Wbite bile: 0/15")));
 	PocketedCountText->SetJustification(ETextJustify::Right);
@@ -97,6 +126,19 @@ void UPoolHUDWidget::BuildWidgetTree()
 		PanelSlot->SetAnchors(FAnchors(1.0f, 0.5f));
 		PanelSlot->SetAlignment(FVector2D(1.0f, 0.5f));
 		PanelSlot->SetPosition(FVector2D(-24.0f, 0.0f));
+	}
+
+	WinnerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("WinnerText"));
+	WinnerText->SetText(FText::FromString(TEXT("")));
+	WinnerText->SetJustification(ETextJustify::Center);
+	WinnerText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.93f, 0.68f)));
+	WinnerText->SetVisibility(ESlateVisibility::Collapsed);
+	RootCanvas->AddChild(WinnerText);
+	if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(WinnerText->Slot))
+	{
+		PanelSlot->SetAutoSize(true);
+		PanelSlot->SetAnchors(FAnchors(0.5f, 0.25f));
+		PanelSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 	}
 
 	PowerBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("PowerBar"));
@@ -145,6 +187,32 @@ void UPoolHUDWidget::SetPocketedCount(int32 InCount)
 	if (PocketedCountText)
 	{
 		PocketedCountText->SetText(FText::FromString(FString::Printf(TEXT("Wbite bile: %d/15"), FMath::Clamp(InCount, 0, 15))));
+	}
+}
+
+void UPoolHUDWidget::SetTurnText(const FString& InText)
+{
+	if (TurnText)
+	{
+		TurnText->SetText(FText::FromString(InText));
+	}
+}
+
+void UPoolHUDWidget::SetOpponentText(const FString& InText)
+{
+	if (OpponentText)
+	{
+		OpponentText->SetText(FText::FromString(InText));
+		OpponentText->SetVisibility(InText.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+}
+
+void UPoolHUDWidget::SetWinnerText(const FString& InText)
+{
+	if (WinnerText)
+	{
+		WinnerText->SetText(FText::FromString(InText));
+		WinnerText->SetVisibility(InText.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 }
 

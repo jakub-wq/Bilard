@@ -79,6 +79,11 @@ namespace
 			return TEXT("Standardowy");
 		}
 	}
+
+	FString GetModeLabel(EPoolMatchMode Mode)
+	{
+		return Mode == EPoolMatchMode::LocalVersus ? TEXT("Lokalna gra") : TEXT("Tryb treningowy");
+	}
 }
 
 TSharedRef<SWidget> UPoolMenuWidget::RebuildWidget()
@@ -92,16 +97,16 @@ void UPoolMenuWidget::NativeConstruct()
 	Super::NativeConstruct();
 	SetIsFocusable(true);
 
-	if (PlayButton)
-	{
-		PlayButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandlePlayClicked);
-		PlayButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandlePlayClicked);
-	}
-
 	if (SettingsButton)
 	{
 		SettingsButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleSettingsClicked);
 		SettingsButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleSettingsClicked);
+	}
+
+	if (PlayButton)
+	{
+		PlayButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleGameModeClicked);
+		PlayButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleGameModeClicked);
 	}
 
 	if (QuitButton)
@@ -114,6 +119,12 @@ void UPoolMenuWidget::NativeConstruct()
 	{
 		BackButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleBackClicked);
 		BackButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleBackClicked);
+	}
+
+	if (SettingsBackButton)
+	{
+		SettingsBackButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleBackClicked);
+		SettingsBackButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleBackClicked);
 	}
 
 	if (StandardSkinButton)
@@ -140,6 +151,18 @@ void UPoolMenuWidget::NativeConstruct()
 		YellowSkinButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleYellowSkinClicked);
 	}
 
+	if (TrainingModeButton)
+	{
+		TrainingModeButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleTrainingModeClicked);
+		TrainingModeButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleTrainingModeClicked);
+	}
+
+	if (LocalVersusButton)
+	{
+		LocalVersusButton->OnClicked.RemoveDynamic(this, &UPoolMenuWidget::HandleLocalVersusModeClicked);
+		LocalVersusButton->OnClicked.AddDynamic(this, &UPoolMenuWidget::HandleLocalVersusModeClicked);
+	}
+
 	ShowMainMenu();
 	UpdateSkinSelectionVisuals();
 }
@@ -150,6 +173,9 @@ void UPoolMenuWidget::BuildWidgetTree()
 	SettingsButton = nullptr;
 	QuitButton = nullptr;
 	BackButton = nullptr;
+	SettingsBackButton = nullptr;
+	TrainingModeButton = nullptr;
+	LocalVersusButton = nullptr;
 	StandardSkinButton = nullptr;
 	BlueSkinButton = nullptr;
 	RedSkinButton = nullptr;
@@ -161,6 +187,7 @@ void UPoolMenuWidget::BuildWidgetTree()
 	YellowSkinLabel = nullptr;
 	MainMenuPanel = nullptr;
 	SettingsPanel = nullptr;
+	ModePanel = nullptr;
 
 	if (!WidgetTree)
 	{
@@ -206,7 +233,7 @@ void UPoolMenuWidget::BuildWidgetTree()
 	}
 
 	SubtitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SubtitleText"));
-	SubtitleText->SetText(FText::FromString(TEXT("Kliknij Graj, aby rozpocząć partię.")));
+	SubtitleText->SetText(FText::FromString(TEXT("Wybierz tryb gry, aby rozpocząć rozgrywkę.")));
 	SubtitleText->SetJustification(ETextJustify::Center);
 	SubtitleText->SetAutoWrapText(true);
 	SubtitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.78f, 0.85f, 0.81f)));
@@ -224,7 +251,7 @@ void UPoolMenuWidget::BuildWidgetTree()
 	PlayButton = MakeMenuButton(
 		WidgetTree,
 		TEXT("PlayButton"),
-		TEXT("Graj"),
+		TEXT("Tryb gry"),
 		FLinearColor(0.08f, 0.12f, 0.10f, 0.94f),
 		PlayLabel);
 	MainMenuPanel->AddChild(PlayButton);
@@ -260,6 +287,63 @@ void UPoolMenuWidget::BuildWidgetTree()
 	{
 		QuitSlot->SetHorizontalAlignment(HAlign_Fill);
 		QuitSlot->SetPadding(FMargin(34.0f, 0.0f, 34.0f, 34.0f));
+	}
+
+	ModePanel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ModePanel"));
+	Layout->AddChildToVerticalBox(ModePanel);
+
+	UTextBlock* ModeTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ModeTitle"));
+	ModeTitle->SetText(FText::FromString(TEXT("Wybierz tryb gry")));
+	ModeTitle->SetJustification(ETextJustify::Center);
+	ModeTitle->SetColorAndOpacity(FSlateColor(FLinearColor(0.90f, 0.95f, 0.92f)));
+	ModePanel->AddChild(ModeTitle);
+	if (UVerticalBoxSlot* ModeTitleSlot = Cast<UVerticalBoxSlot>(ModeTitle->Slot))
+	{
+		ModeTitleSlot->SetHorizontalAlignment(HAlign_Fill);
+		ModeTitleSlot->SetPadding(FMargin(34.0f, 8.0f, 34.0f, 10.0f));
+	}
+
+	UTextBlock* TrainingLabel = nullptr;
+	TrainingModeButton = MakeMenuButton(
+		WidgetTree,
+		TEXT("TrainingModeButton"),
+		TEXT("Tryb treningowy"),
+		FLinearColor(0.08f, 0.18f, 0.10f, 0.94f),
+		TrainingLabel);
+	ModePanel->AddChild(TrainingModeButton);
+	if (UVerticalBoxSlot* ModeSlot = Cast<UVerticalBoxSlot>(TrainingModeButton->Slot))
+	{
+		ModeSlot->SetHorizontalAlignment(HAlign_Fill);
+		ModeSlot->SetPadding(FMargin(34.0f, 0.0f, 34.0f, 10.0f));
+	}
+
+	UTextBlock* LocalVersusLabel = nullptr;
+	LocalVersusButton = MakeMenuButton(
+		WidgetTree,
+		TEXT("LocalVersusButton"),
+		TEXT("Lokalna gra"),
+		FLinearColor(0.18f, 0.08f, 0.10f, 0.94f),
+		LocalVersusLabel);
+	ModePanel->AddChild(LocalVersusButton);
+	if (UVerticalBoxSlot* ModeSlot = Cast<UVerticalBoxSlot>(LocalVersusButton->Slot))
+	{
+		ModeSlot->SetHorizontalAlignment(HAlign_Fill);
+		ModeSlot->SetPadding(FMargin(34.0f, 0.0f, 34.0f, 10.0f));
+	}
+
+	UTextBlock* ModeBackLabel = nullptr;
+	UButton* ModeBackButton = MakeMenuButton(
+		WidgetTree,
+		TEXT("ModeBackButton"),
+		TEXT("Wróć"),
+		FLinearColor(0.09f, 0.10f, 0.15f, 0.94f),
+		ModeBackLabel);
+	BackButton = ModeBackButton;
+	ModePanel->AddChild(ModeBackButton);
+	if (UVerticalBoxSlot* BackSlot = Cast<UVerticalBoxSlot>(ModeBackButton->Slot))
+	{
+		BackSlot->SetHorizontalAlignment(HAlign_Fill);
+		BackSlot->SetPadding(FMargin(34.0f, 6.0f, 34.0f, 34.0f));
 	}
 
 	SettingsPanel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SettingsPanel"));
@@ -329,14 +413,14 @@ void UPoolMenuWidget::BuildWidgetTree()
 	}
 
 	UTextBlock* BackLabel = nullptr;
-	BackButton = MakeMenuButton(
+	SettingsBackButton = MakeMenuButton(
 		WidgetTree,
-		TEXT("BackButton"),
+		TEXT("SettingsBackButton"),
 		TEXT("Wróć"),
 		FLinearColor(0.09f, 0.10f, 0.15f, 0.94f),
 		BackLabel);
-	SettingsPanel->AddChild(BackButton);
-	if (UVerticalBoxSlot* BackSlot = Cast<UVerticalBoxSlot>(BackButton->Slot))
+	SettingsPanel->AddChild(SettingsBackButton);
+	if (UVerticalBoxSlot* BackSlot = Cast<UVerticalBoxSlot>(SettingsBackButton->Slot))
 	{
 		BackSlot->SetHorizontalAlignment(HAlign_Fill);
 		BackSlot->SetPadding(FMargin(34.0f, 6.0f, 34.0f, 34.0f));
@@ -359,6 +443,11 @@ void UPoolMenuWidget::SetSelectedCueSkin(ECueSkin InSkin)
 	UpdateSkinSelectionVisuals();
 }
 
+void UPoolMenuWidget::SetSelectedMatchMode(EPoolMatchMode InMode)
+{
+	SelectedMatchMode = InMode;
+}
+
 void UPoolMenuWidget::HandlePlayClicked()
 {
 	OnPlayClicked.Broadcast();
@@ -367,6 +456,11 @@ void UPoolMenuWidget::HandlePlayClicked()
 void UPoolMenuWidget::HandleQuitClicked()
 {
 	OnQuitClicked.Broadcast();
+}
+
+void UPoolMenuWidget::HandleGameModeClicked()
+{
+	ShowModeMenu();
 }
 
 void UPoolMenuWidget::HandleSettingsClicked()
@@ -403,6 +497,18 @@ void UPoolMenuWidget::HandleYellowSkinClicked()
 	OnCueSkinSelected.Broadcast(ECueSkin::Yellow);
 }
 
+void UPoolMenuWidget::HandleTrainingModeClicked()
+{
+	SelectedMatchMode = EPoolMatchMode::Training;
+	OnModeSelected.Broadcast(SelectedMatchMode);
+}
+
+void UPoolMenuWidget::HandleLocalVersusModeClicked()
+{
+	SelectedMatchMode = EPoolMatchMode::LocalVersus;
+	OnModeSelected.Broadcast(SelectedMatchMode);
+}
+
 void UPoolMenuWidget::UpdateSkinSelectionVisuals()
 {
 	UpdateButtonHighlight(StandardSkinButton, StandardSkinLabel, FLinearColor(0.25f, 0.17f, 0.10f, 0.94f), SelectedCueSkin == ECueSkin::Standard);
@@ -425,6 +531,11 @@ void UPoolMenuWidget::ShowMainMenu()
 		MainMenuPanel->SetVisibility(ESlateVisibility::Visible);
 	}
 
+	if (ModePanel)
+	{
+		ModePanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
 	if (SettingsPanel)
 	{
 		SettingsPanel->SetVisibility(ESlateVisibility::Collapsed);
@@ -445,10 +556,40 @@ void UPoolMenuWidget::ShowSettingsMenu()
 		MainMenuPanel->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
+	if (ModePanel)
+	{
+		ModePanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
 	if (SettingsPanel)
 	{
 		SettingsPanel->SetVisibility(ESlateVisibility::Visible);
 	}
 
 	UpdateSkinSelectionVisuals();
+}
+
+void UPoolMenuWidget::ShowModeMenu()
+{
+	bSettingsVisible = false;
+
+	if (MainMenuPanel)
+	{
+		MainMenuPanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (ModePanel)
+	{
+		ModePanel->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	if (SettingsPanel)
+	{
+		SettingsPanel->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (SubtitleText)
+	{
+		SubtitleText->SetText(FText::FromString(FString::Printf(TEXT("Aktualny tryb: %s"), *GetModeLabel(SelectedMatchMode))));
+	}
 }

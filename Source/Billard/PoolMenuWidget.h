@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "CueSkin.h"
+#include "PoolMatchTypes.h"
 #include "PoolMenuWidget.generated.h"
 
 class UButton;
@@ -12,6 +13,7 @@ class UPanelWidget;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPoolMenuPlayClicked);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPoolMenuQuitClicked);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPoolMenuCueSkinSelected, ECueSkin, SelectedSkin);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPoolMenuModeSelected, EPoolMatchMode, SelectedMode);
 
 UCLASS()
 class BILLARD_API UPoolMenuWidget : public UUserWidget
@@ -23,6 +25,7 @@ public:
 	virtual void NativeConstruct() override;
 	void SetSubtitleText(const FString& InText);
 	void SetSelectedCueSkin(ECueSkin InSkin);
+	void SetSelectedMatchMode(EPoolMatchMode InMode);
 
 	UPROPERTY(BlueprintAssignable, Category = "Billiards")
 	FPoolMenuPlayClicked OnPlayClicked;
@@ -33,17 +36,24 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Billiards")
 	FPoolMenuCueSkinSelected OnCueSkinSelected;
 
+	UPROPERTY(BlueprintAssignable, Category = "Billiards")
+	FPoolMenuModeSelected OnModeSelected;
+
 protected:
 	void BuildWidgetTree();
 	void UpdateSkinSelectionVisuals();
 	void ShowMainMenu();
 	void ShowSettingsMenu();
+	void ShowModeMenu();
 
 	UFUNCTION()
 	void HandlePlayClicked();
 
 	UFUNCTION()
 	void HandleQuitClicked();
+
+	UFUNCTION()
+	void HandleGameModeClicked();
 
 	UFUNCTION()
 	void HandleSettingsClicked();
@@ -63,8 +73,20 @@ protected:
 	UFUNCTION()
 	void HandleYellowSkinClicked();
 
+	UFUNCTION()
+	void HandleTrainingModeClicked();
+
+	UFUNCTION()
+	void HandleLocalVersusModeClicked();
+
 	UPROPERTY()
 	UButton* PlayButton = nullptr;
+
+	UPROPERTY()
+	UButton* TrainingModeButton = nullptr;
+
+	UPROPERTY()
+	UButton* LocalVersusButton = nullptr;
 
 	UPROPERTY()
 	UButton* SettingsButton = nullptr;
@@ -74,6 +96,9 @@ protected:
 
 	UPROPERTY()
 	UButton* BackButton = nullptr;
+
+	UPROPERTY()
+	UButton* SettingsBackButton = nullptr;
 
 	UPROPERTY()
 	UButton* StandardSkinButton = nullptr;
@@ -108,7 +133,11 @@ protected:
 	UPROPERTY()
 	UPanelWidget* SettingsPanel = nullptr;
 
-	FString MainSubtitleText = TEXT("Kliknij Graj, aby rozpocząć partię.");
+	UPROPERTY()
+	UPanelWidget* ModePanel = nullptr;
+
+	FString MainSubtitleText = TEXT("Wybierz tryb gry, aby rozpocząć rozgrywkę.");
 	ECueSkin SelectedCueSkin = ECueSkin::Standard;
+	EPoolMatchMode SelectedMatchMode = EPoolMatchMode::Training;
 	bool bSettingsVisible = false;
 };
