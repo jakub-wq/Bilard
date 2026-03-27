@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CueSkin.h"
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "PoolPlayerController.generated.h"
@@ -28,6 +29,9 @@ protected:
 
 	UFUNCTION()
 	void HandleQuitClicked();
+
+	UFUNCTION()
+	void HandleCueSkinSelected(ECueSkin SelectedSkin);
 
 	UPROPERTY()
 	UPoolMenuWidget* MenuWidget = nullptr;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CueSkin.h"
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
 #include "PoolSaveGame.generated.h"
@@ -42,4 +43,7 @@ public:
 
 	UPROPERTY()
 	bool bHasPlayerState = false;
+
+	UPROPERTY()
+	ECueSkin SelectedCueSkin = ECueSkin::Standard;
 };

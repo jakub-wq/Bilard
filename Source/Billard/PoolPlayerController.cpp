@@ -50,6 +50,8 @@ void APoolPlayerController::EnsureMenuWidget()
 	MenuWidget->OnPlayClicked.AddDynamic(this, &APoolPlayerController::HandlePlayClicked);
 	MenuWidget->OnQuitClicked.RemoveDynamic(this, &APoolPlayerController::HandleQuitClicked);
 	MenuWidget->OnQuitClicked.AddDynamic(this, &APoolPlayerController::HandleQuitClicked);
+	MenuWidget->OnCueSkinSelected.RemoveDynamic(this, &APoolPlayerController::HandleCueSkinSelected);
+	MenuWidget->OnCueSkinSelected.AddDynamic(this, &APoolPlayerController::HandleCueSkinSelected);
 }
 
 void APoolPlayerController::OpenMenu(bool bSaveState)
@@ -80,6 +82,11 @@ void APoolPlayerController::OpenMenu(bool bSaveState)
 		{
 			MenuWidget->SetSubtitleText(TEXT("Kliknij Graj, aby rozpocząć partię."));
 		}
+	}
+
+	if (AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn()))
+	{
+		MenuWidget->SetSelectedCueSkin(MyCharacter->GetSelectedCueSkin());
 	}
 
 	bMenuVisible = true;
@@ -151,4 +158,12 @@ void APoolPlayerController::HandleQuitClicked()
 
 	SetPause(false);
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
+void APoolPlayerController::HandleCueSkinSelected(ECueSkin SelectedSkin)
+{
+	if (AMyCharacter* MyCharacter = Cast<AMyCharacter>(GetPawn()))
+	{
+		MyCharacter->SetCueSkin(SelectedSkin, true);
+	}
 }

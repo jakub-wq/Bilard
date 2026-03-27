@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CueSkin.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "MyCharacter.generated.h"
@@ -21,6 +22,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	void PrepareForMenu();
 	void SetInGameHUDVisible(bool bVisible);
+	void SetCueSkin(ECueSkin NewSkin, bool bSavePreference = true);
+	ECueSkin GetSelectedCueSkin() const { return SelectedCueSkin; }
 
 	static FTransform CalculateCueVisualTransform(
 		const FVector& BallLocation,
@@ -56,6 +59,7 @@ protected:
 	void PrimaryActionReleased();
 	void CancelShot();
 	void ResetBalls();
+	void ToggleCrouch();
 
 	void StartChargingShot();
 	void ReleaseShot();
@@ -79,6 +83,9 @@ protected:
 	void UpdateNormalFacingToTable();
 	FVector GetAimDirection() const;
 	void UpdateSpinInput(float SideDelta, float TopDelta);
+	void ApplyCueSkin(ECueSkin NewSkin);
+	void LoadCueSkinPreference();
+	void SaveCueSkinPreference() const;
 
 	UFUNCTION()
 	void HandleResetWidgetClicked();
@@ -148,6 +155,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billiards|Shot")
 	float SpinAdjustSpeed = 0.035f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Billiards|Shot")
+	ECueSkin SelectedCueSkin = ECueSkin::Standard;
 
 	UPROPERTY()
 	APoolBall* ActiveCueBall = nullptr;

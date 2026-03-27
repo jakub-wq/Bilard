@@ -11,15 +11,20 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInterface.h"
 #include "PoolBall.h"
 #include "PoolGameMode.h"
 #include "PoolHUDWidget.h"
+#include "PoolSaveGame.h"
 #include "PoolTableManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EngineUtils.h"
 
 namespace
 {
+	constexpr TCHAR PoolSettingsSlotName[] = TEXT("PoolSettings");
+	constexpr int32 PoolSettingsUserIndex = 0;
+
 	float GetMeshLongestExtent(const UStaticMesh* Mesh)
 	{
 		if (!Mesh)
@@ -47,6 +52,29 @@ namespace
 		const float UniformScale = DesiredCueLength / CurrentLength;
 		return FVector(UniformScale);
 	}
+
+	UMaterialInterface* LoadCueSkinMaterial(ECueSkin Skin)
+	{
+		const TCHAR* MaterialPath = nullptr;
+		switch (Skin)
+		{
+		case ECueSkin::Blue:
+			MaterialPath = TEXT("/Game/Billiards/Cues/Bleu.Bleu");
+			break;
+		case ECueSkin::Red:
+			MaterialPath = TEXT("/Game/Billiards/Balls/Rouge.Rouge");
+			break;
+		case ECueSkin::Yellow:
+			MaterialPath = TEXT("/Game/Billiards/Balls/Jaune.Jaune");
+			break;
+		case ECueSkin::Standard:
+		default:
+			MaterialPath = TEXT("/Game/Billiards/Cues/Bois_clair.Bois_clair");
+			break;
+		}
+
+		return LoadObject<UMaterialInterface>(nullptr, MaterialPath);
+	}
 }
 
 AMyCharacter::AMyCharacter()
@@ -64,6 +92,10 @@ AMyCharacter::AMyCharacter()
 	Movement->MaxWalkSpeed = 420.0f;
 	Movement->JumpZVelocity = 420.0f;
 	Movement->AirControl = 0.2f;
+	Movement->GetNavAgentPropertiesRef().bCanCrouch = true;
+	Movement->CrouchedHalfHeight = 56.0f;
+
+	CrouchedEyeHeight = 48.0f;
 
 	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
@@ -111,6 +143,7 @@ AMyCharacter::AMyCharacter()
 void AMyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	LoadCueSkinPreference();
 	AttachCueToPlayer();
 	EnsureHUDWidget();
 	UpdateNormalFacingToTable();
@@ -180,6 +213,7 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	PlayerInputComponent->BindAction(TEXT("Jump"), IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction(TEXT("Jump"), IE_Released, this, &ACharacter::StopJumping);
+	PlayerInputComponent->BindAction(TEXT("ToggleCrouch"), IE_Pressed, this, &AMyCharacter::ToggleCrouch);
 	PlayerInputComponent->BindAction(TEXT("Shoot"), IE_Pressed, this, &AMyCharacter::PrimaryActionPressed);
 	PlayerInputComponent->BindAction(TEXT("Shoot"), IE_Released, this, &AMyCharacter::PrimaryActionReleased);
 	PlayerInputComponent->BindAction(TEXT("CancelShot"), IE_Pressed, this, &AMyCharacter::CancelShot);
@@ -359,6 +393,18 @@ void AMyCharacter::ResetBalls()
 		ExitCueBallPlacementMode();
 		UpdateNormalFacingToTable();
 		ShowMessage(TEXT("Układ bil został zresetowany."));
+	}
+}
+
+void AMyCharacter::ToggleCrouch()
+{
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	else
+	{
+		Crouch();
 	}
 }
 
@@ -625,6 +671,16 @@ void AMyCharacter::SetInGameHUDVisible(bool bVisible)
 	}
 }
 
+void AMyCharacter::SetCueSkin(ECueSkin NewSkin, bool bSavePreference)
+{
+	ApplyCueSkin(NewSkin);
+
+	if (bSavePreference)
+	{
+		SaveCueSkinPreference();
+	}
+}
+
 void AMyCharacter::ShowMessage(const FString& Message) const
 {
 	if (HUDWidget)
@@ -742,6 +798,48 @@ void AMyCharacter::UpdateSpinInput(float SideDelta, float TopDelta)
 
 	SpinInput.X = FMath::Clamp(SpinInput.X + SideDelta, -1.0f, 1.0f);
 	SpinInput.Y = FMath::Clamp(SpinInput.Y + TopDelta, -1.0f, 1.0f);
+}
+
+void AMyCharacter::ApplyCueSkin(ECueSkin NewSkin)
+{
+	SelectedCueSkin = NewSkin;
+
+	if (!CueMesh)
+	{
+		return;
+	}
+
+	if (UMaterialInterface* Material = LoadCueSkinMaterial(NewSkin))
+	{
+		const int32 MaterialCount = FMath::Max(1, CueMesh->GetNumMaterials());
+		for (int32 MaterialIndex = 0; MaterialIndex < MaterialCount; ++MaterialIndex)
+		{
+			CueMesh->SetMaterial(MaterialIndex, Material);
+		}
+	}
+}
+
+void AMyCharacter::LoadCueSkinPreference()
+{
+	if (const UPoolSaveGame* SaveGame = Cast<UPoolSaveGame>(UGameplayStatics::LoadGameFromSlot(PoolSettingsSlotName, PoolSettingsUserIndex)))
+	{
+		ApplyCueSkin(SaveGame->SelectedCueSkin);
+		return;
+	}
+
+	ApplyCueSkin(ECueSkin::Standard);
+}
+
+void AMyCharacter::SaveCueSkinPreference() const
+{
+	UPoolSaveGame* SaveGame = Cast<UPoolSaveGame>(UGameplayStatics::CreateSaveGameObject(UPoolSaveGame::StaticClass()));
+	if (!SaveGame)
+	{
+		return;
+	}
+
+	SaveGame->SelectedCueSkin = SelectedCueSkin;
+	UGameplayStatics::SaveGameToSlot(SaveGame, PoolSettingsSlotName, PoolSettingsUserIndex);
 }
 
 void AMyCharacter::UpdateNormalFacingToTable()
