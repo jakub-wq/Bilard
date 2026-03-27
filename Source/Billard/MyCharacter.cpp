@@ -784,9 +784,12 @@ void AMyCharacter::UpdateHUD()
 	if (APoolTableManager* Manager = GetPoolManager())
 	{
 		HUDWidget->SetPocketedCount(Manager->GetPocketedBallCount());
-		HUDWidget->SetTurnText(Manager->GetHUDTurnText());
-		HUDWidget->SetOpponentText(Manager->GetHUDOpponentText());
+		HUDWidget->SetTurnText(Manager->GetHUDTurnText(), Manager->GetHUDTurnColor());
+		HUDWidget->SetOpponentText(Manager->GetHUDOpponentText(), Manager->GetHUDOpponentColor());
 		HUDWidget->SetWinnerText(Manager->GetHUDWinnerText());
+		HUDWidget->SetBlueScoreText(Manager->GetHUDBlueScoreText());
+		HUDWidget->SetRedScoreText(Manager->GetHUDRedScoreText());
+		HUDWidget->SetLocalScoreboardVisible(Manager->ShouldShowLocalScoreboard());
 	}
 }
 

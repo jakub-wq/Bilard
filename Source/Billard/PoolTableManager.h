@@ -8,6 +8,7 @@
 class APoolBall;
 class APoolPocketTrigger;
 class APoolCushionWall;
+class APoolOpponentMarker;
 class AStaticMeshActor;
 class UStaticMeshComponent;
 class UStaticMesh;
@@ -41,6 +42,11 @@ public:
 	FString GetHUDTurnText() const;
 	FString GetHUDOpponentText() const;
 	FString GetHUDWinnerText() const;
+	FString GetHUDBlueScoreText() const;
+	FString GetHUDRedScoreText() const;
+	FLinearColor GetHUDTurnColor() const;
+	FLinearColor GetHUDOpponentColor() const;
+	bool ShouldShowLocalScoreboard() const { return MatchMode == EPoolMatchMode::LocalVersus; }
 	void WriteMatchStateToSaveGame(UPoolSaveGame& SaveGame) const;
 	void LoadMatchStateFromSaveGame(const UPoolSaveGame& SaveGame);
 
@@ -93,6 +99,7 @@ protected:
 	void ApplyCurrentPlayerView();
 	void ResetLocalMatchState();
 	void RecordLocalPocketedBall(APoolBall* Ball);
+	void UpdateOpponentMarkers();
 	EPoolBallGroup GetBallGroupForBall(const APoolBall* Ball) const;
 	FString GetPlayerLabel(EPoolPlayerSide Player) const;
 	FString GetPlayerCameraLabel(EPoolPlayerSide Player) const;
@@ -328,4 +335,6 @@ protected:
 	FTransform RedSavedTransform = FTransform::Identity;
 	FRotator RedSavedControlRotation = FRotator::ZeroRotator;
 	bool bHasRedSavedView = false;
+	APoolOpponentMarker* BlueOpponentMarker = nullptr;
+	APoolOpponentMarker* RedOpponentMarker = nullptr;
 };

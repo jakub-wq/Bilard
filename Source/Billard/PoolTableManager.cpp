@@ -15,6 +15,7 @@
 #include "MyCharacter.h"
 #include "PoolBall.h"
 #include "PoolCushionWall.h"
+#include "PoolOpponentMarker.h"
 #include "PoolPocketTrigger.h"
 #include "PoolSaveGame.h"
 
@@ -324,6 +325,18 @@ void APoolTableManager::DestroySpawnedActors()
 	CueBallInHandLocation = FVector::ZeroVector;
 	PocketedBallCount = 0;
 	ResetLocalMatchState();
+
+	if (IsValid(BlueOpponentMarker))
+	{
+		BlueOpponentMarker->Destroy();
+		BlueOpponentMarker = nullptr;
+	}
+
+	if (IsValid(RedOpponentMarker))
+	{
+		RedOpponentMarker->Destroy();
+		RedOpponentMarker = nullptr;
+	}
 }
 
 void APoolTableManager::HandleEscapedBalls()
@@ -1050,6 +1063,7 @@ void APoolTableManager::ResetRack()
 	if (MatchMode == EPoolMatchMode::LocalVersus)
 	{
 		ApplyCurrentPlayerView();
+		UpdateOpponentMarkers();
 	}
 }
 
@@ -1171,6 +1185,7 @@ void APoolTableManager::NotifyShotTaken(const FTransform& PlayerTransform, const
 	bScratchCommittedThisTurn = false;
 	bBlackPocketedThisTurn = false;
 	bTurnResolutionPending = true;
+	UpdateOpponentMarkers();
 }
 
 FString APoolTableManager::GetHUDTurnText() const
@@ -1219,6 +1234,30 @@ FString APoolTableManager::GetHUDWinnerText() const
 	return FString::Printf(TEXT("Wygrał gracz %s. Rozgrywka zakończona."), *GetPlayerLabel(WinningPlayer));
 }
 
+FString APoolTableManager::GetHUDBlueScoreText() const
+{
+	return FString::Printf(TEXT("Niebieski: %d"), BluePocketedCount);
+}
+
+FString APoolTableManager::GetHUDRedScoreText() const
+{
+	return FString::Printf(TEXT("Czerwony: %d"), RedPocketedCount);
+}
+
+FLinearColor APoolTableManager::GetHUDTurnColor() const
+{
+	return ActivePlayer == EPoolPlayerSide::Blue
+		? FLinearColor(0.30f, 0.62f, 1.0f)
+		: FLinearColor(1.0f, 0.35f, 0.35f);
+}
+
+FLinearColor APoolTableManager::GetHUDOpponentColor() const
+{
+	return GetOpponent(ActivePlayer) == EPoolPlayerSide::Blue
+		? FLinearColor(0.30f, 0.62f, 1.0f)
+		: FLinearColor(1.0f, 0.35f, 0.35f);
+}
+
 void APoolTableManager::WriteMatchStateToSaveGame(UPoolSaveGame& SaveGame) const
 {
 	SaveGame.MatchMode = MatchMode;
@@ -1257,6 +1296,7 @@ void APoolTableManager::LoadMatchStateFromSaveGame(const UPoolSaveGame& SaveGame
 	bScratchCommittedThisTurn = false;
 	bBlackPocketedThisTurn = false;
 	PocketedThisTurn.Reset();
+	UpdateOpponentMarkers();
 }
 
 void APoolTableManager::ResolveLocalMatchTurn()
@@ -1376,6 +1416,7 @@ void APoolTableManager::ApplyCurrentPlayerView()
 	}
 
 	MyCharacter->ApplyExternalView(DesiredTransform, DesiredRotation);
+	UpdateOpponentMarkers();
 }
 
 void APoolTableManager::ResetLocalMatchState()
@@ -1410,6 +1451,53 @@ void APoolTableManager::RecordLocalPocketedBall(APoolBall* Ball)
 	if (GetBallGroupForBall(Ball) == EPoolBallGroup::Black)
 	{
 		bBlackPocketedThisTurn = true;
+	}
+}
+
+void APoolTableManager::UpdateOpponentMarkers()
+{
+	if (MatchMode != EPoolMatchMode::LocalVersus || !GetWorld())
+	{
+		if (IsValid(BlueOpponentMarker))
+		{
+			BlueOpponentMarker->SetMarkerVisible(false);
+		}
+		if (IsValid(RedOpponentMarker))
+		{
+			RedOpponentMarker->SetMarkerVisible(false);
+		}
+		return;
+	}
+
+	auto EnsureMarker = [&](APoolOpponentMarker*& Marker)
+	{
+		if (!IsValid(Marker))
+		{
+			Marker = GetWorld()->SpawnActor<APoolOpponentMarker>(APoolOpponentMarker::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+		}
+	};
+
+	EnsureMarker(BlueOpponentMarker);
+	EnsureMarker(RedOpponentMarker);
+
+	if (IsValid(BlueOpponentMarker))
+	{
+		BlueOpponentMarker->SetMarkerText(TEXT("Przeciwnik"));
+		BlueOpponentMarker->SetMarkerColor(FColor(77, 158, 255));
+		const bool bVisible = bHasBlueSavedView && ActivePlayer == EPoolPlayerSide::Red;
+		BlueOpponentMarker->SetActorLocation(BlueSavedTransform.GetLocation() + TableUpAxis * 72.0f);
+		BlueOpponentMarker->SetActorRotation(BlueSavedControlRotation);
+		BlueOpponentMarker->SetMarkerVisible(bVisible);
+	}
+
+	if (IsValid(RedOpponentMarker))
+	{
+		RedOpponentMarker->SetMarkerText(TEXT("Przeciwnik"));
+		RedOpponentMarker->SetMarkerColor(FColor(255, 89, 89));
+		const bool bVisible = bHasRedSavedView && ActivePlayer == EPoolPlayerSide::Blue;
+		RedOpponentMarker->SetActorLocation(RedSavedTransform.GetLocation() + TableUpAxis * 72.0f);
+		RedOpponentMarker->SetActorRotation(RedSavedControlRotation);
+		RedOpponentMarker->SetMarkerVisible(bVisible);
 	}
 }
 

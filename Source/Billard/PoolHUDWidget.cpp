@@ -37,6 +37,8 @@ void UPoolHUDWidget::BuildWidgetTree()
 	TurnText = nullptr;
 	OpponentText = nullptr;
 	WinnerText = nullptr;
+	BlueScoreText = nullptr;
+	RedScoreText = nullptr;
 	PowerBar = nullptr;
 
 	if (!WidgetTree)
@@ -128,6 +130,34 @@ void UPoolHUDWidget::BuildWidgetTree()
 		PanelSlot->SetPosition(FVector2D(-24.0f, 0.0f));
 	}
 
+	BlueScoreText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BlueScoreText"));
+	BlueScoreText->SetText(FText::FromString(TEXT("Niebieski: 0")));
+	BlueScoreText->SetJustification(ETextJustify::Right);
+	BlueScoreText->SetColorAndOpacity(FSlateColor(FLinearColor(0.30f, 0.62f, 1.0f)));
+	BlueScoreText->SetVisibility(ESlateVisibility::Collapsed);
+	RootCanvas->AddChild(BlueScoreText);
+	if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(BlueScoreText->Slot))
+	{
+		PanelSlot->SetAutoSize(true);
+		PanelSlot->SetAnchors(FAnchors(1.0f, 0.0f));
+		PanelSlot->SetAlignment(FVector2D(1.0f, 0.0f));
+		PanelSlot->SetPosition(FVector2D(-24.0f, 56.0f));
+	}
+
+	RedScoreText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("RedScoreText"));
+	RedScoreText->SetText(FText::FromString(TEXT("Czerwony: 0")));
+	RedScoreText->SetJustification(ETextJustify::Right);
+	RedScoreText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.35f, 0.35f)));
+	RedScoreText->SetVisibility(ESlateVisibility::Collapsed);
+	RootCanvas->AddChild(RedScoreText);
+	if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(RedScoreText->Slot))
+	{
+		PanelSlot->SetAutoSize(true);
+		PanelSlot->SetAnchors(FAnchors(1.0f, 0.0f));
+		PanelSlot->SetAlignment(FVector2D(1.0f, 0.0f));
+		PanelSlot->SetPosition(FVector2D(-24.0f, 80.0f));
+	}
+
 	WinnerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("WinnerText"));
 	WinnerText->SetText(FText::FromString(TEXT("")));
 	WinnerText->SetJustification(ETextJustify::Center);
@@ -190,19 +220,21 @@ void UPoolHUDWidget::SetPocketedCount(int32 InCount)
 	}
 }
 
-void UPoolHUDWidget::SetTurnText(const FString& InText)
+void UPoolHUDWidget::SetTurnText(const FString& InText, const FLinearColor& InColor)
 {
 	if (TurnText)
 	{
 		TurnText->SetText(FText::FromString(InText));
+		TurnText->SetColorAndOpacity(FSlateColor(InColor));
 	}
 }
 
-void UPoolHUDWidget::SetOpponentText(const FString& InText)
+void UPoolHUDWidget::SetOpponentText(const FString& InText, const FLinearColor& InColor)
 {
 	if (OpponentText)
 	{
 		OpponentText->SetText(FText::FromString(InText));
+		OpponentText->SetColorAndOpacity(FSlateColor(InColor));
 		OpponentText->SetVisibility(InText.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 }
@@ -213,6 +245,40 @@ void UPoolHUDWidget::SetWinnerText(const FString& InText)
 	{
 		WinnerText->SetText(FText::FromString(InText));
 		WinnerText->SetVisibility(InText.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+}
+
+void UPoolHUDWidget::SetBlueScoreText(const FString& InText)
+{
+	if (BlueScoreText)
+	{
+		BlueScoreText->SetText(FText::FromString(InText));
+	}
+}
+
+void UPoolHUDWidget::SetRedScoreText(const FString& InText)
+{
+	if (RedScoreText)
+	{
+		RedScoreText->SetText(FText::FromString(InText));
+	}
+}
+
+void UPoolHUDWidget::SetLocalScoreboardVisible(bool bVisible)
+{
+	if (PocketedCountText)
+	{
+		PocketedCountText->SetVisibility(bVisible ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+
+	if (BlueScoreText)
+	{
+		BlueScoreText->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
+	if (RedScoreText)
+	{
+		RedScoreText->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
